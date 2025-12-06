@@ -24,7 +24,7 @@ LINK_OFICIAL_ENCUESTA = "https://docs.google.com/spreadsheets/d/16P0S2VltRb5-rGq
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
-    page_title="Encuesta del laboratorio de Física",
+    page_title="Resultados Encuesta del laboratorio de Física",
     page_icon="📊",
     layout="wide"
 )
