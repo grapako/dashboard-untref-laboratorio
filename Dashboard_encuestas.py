@@ -5,9 +5,9 @@ Autores: J. I. Peralta & Gemini Pro 3.0
 Fecha: 05/12/2025
 
 Descripción:
-Este script genera un dashboard interactivo para el análisis de encuestas de satisfacción.
-Incluye procesamiento de datos robusto, análisis de sentimiento, visualización estadística
-y funciones de gestión de estado para filtros.
+Aplicación web interactiva desarrollada con Streamlit para el análisis de encuestas 
+de satisfacción estudiantil. Permite la carga de datos desde Google Sheets o archivos locales,
+ofreciendo visualizaciones estadísticas, análisis de sentimiento y filtrado dinámico.
 """
 
 import streamlit as st
@@ -17,6 +17,11 @@ from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import numpy as np
 
+# --- CONFIGURACIÓN DE DATOS POR DEFECTO ---
+# INSTRUCCIÓN: Pegar el enlace público de Google Sheets dentro de las comillas.
+# Esto permitirá que el dashboard cargue los datos automáticamente al abrirse.
+LINK_OFICIAL_ENCUESTA = "" 
+
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
     page_title="Encuesta del laboratorio de Física",
@@ -24,23 +29,26 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- GESTIÓN DE ESTADO (Para el botón de reset) ---
+# --- GESTIÓN DE ESTADO (SESSION STATE) ---
+# Inicialización de variables para el control de filtros
 if 'lab_filter' not in st.session_state: st.session_state.lab_filter = 'Todos'
 if 'car_filter' not in st.session_state: st.session_state.car_filter = 'Todas'
 if 'doc_filter' not in st.session_state: st.session_state.doc_filter = 'Todos'
 
 def reset_filters():
+    """Restablece todos los filtros a su valor predeterminado."""
     st.session_state.lab_filter = 'Todos'
     st.session_state.car_filter = 'Todas'
     st.session_state.doc_filter = 'Todos'
 
 # --- LISTA OFICIAL Y NORMALIZACIÓN DE DOCENTES ---
+# Lista estricta de docentes para mostrar en el filtro
 DOCENTES_OFICIALES = [
-    "Chaparro, Emiliano",
+    "Chaparro, Fabiana",
     "Dragone, Esteban",
     "Leone, Emiliano",
     "Merlo, Rafael",
-    "Orozco Gil, Estefanía",
+    "Orozco Gil, Stefanía",
     "Oviedo, Carla",
     "Peralta, Juan Ignacio",
     "Romeo, Martín",
@@ -48,24 +56,27 @@ DOCENTES_OFICIALES = [
     "Villalba, Martín"
 ]
 
+# Diccionario para corregir variantes comunes o errores de tipeo en la entrada de datos
+# Mapea (Variante encontrada) -> (Nombre Oficial)
 NORMALIZACION_DOCENTES = {
     "Esteban Dragone": "Dragone, Esteban",
     "Rafael Merlo": "Merlo, Rafael",
     "Carla Oviedo": "Oviedo, Carla",
-    "Stefanía Orozco": "Orozco Gil, Estefanía",
-    "Stefanía Orozco Gil": "Orozco Gil, Estefanía",
-    "Estefanía Orozco Gil": "Orozco Gil, Estefanía",
-    "Orozco Gil, Stefanía": "Orozco Gil, Estefanía", 
+    "Stefanía Orozco": "Orozco Gil, Stefanía",
+    "Stefanía Orozco Gil": "Orozco Gil, Stefanía",
+    "Estefanía Orozco Gil": "Orozco Gil, Stefanía",
+    "Orozco Gil, Estefanía": "Orozco Gil, Stefanía", 
     "Juan Ignacio Peralta": "Peralta, Juan Ignacio",
     "Mariela Vieytes": "Vieytes, Mariela",
     "Martín Villalba": "Villalba, Martín",
     "Emiliano Leone": "Leone, Emiliano",
-    "Emiliano Chaparro": "Chaparro, Emiliano",
-    "Fabiana Chaparro": "Chaparro, Emiliano", 
-    "Martín Romeo": "Romeo, Martín"
+    "Emiliano Chaparro": "Chaparro, Fabiana",
+    "Fabiana Chaparro": "Chaparro, Fabiana", 
+    "Martín Romeo": "Romeo, Martín",
+    "Stefanía Orozco": "Orozco Gil, Stefanía"
 }
 
-# --- MAPEO DE PREGUNTAS ---
+# --- MAPEO DE PREGUNTAS (Columnas Excel -> Alias Interno) ---
 PREGUNTA_MAP = {
     'Marca temporal': 'Timestamp',
     'Asistí al': 'Laboratorio',
@@ -84,7 +95,7 @@ PREGUNTA_MAP = {
 
 REVERSE_MAP = {v: k for k, v in PREGUNTA_MAP.items()}
 
-# --- EXPLICACIONES TÉCNICAS ---
+# --- TEXTOS EXPLICATIVOS PARA GRÁFICOS ---
 EXPLICACIONES_CARRERA = {
     'Calif_Guias': "Evalúa la accesibilidad y claridad del material escrito (guías de trabajos prácticos) desde la perspectiva de cada especialidad académica.",
     'Calif_Videos': "Mide la utilidad percibida del material audiovisual de apoyo. Permite identificar si el contenido multimedia satisface las necesidades de estudio de las diferentes carreras.",
@@ -95,15 +106,17 @@ EXPLICACIONES_CARRERA = {
 }
 EXPLICACION_DEFAULT = "Presenta el promedio de satisfacción desagregado por carrera. Permite detectar variaciones en la experiencia educativa según la especialidad del alumno."
 
-# --- FUNCIONES ---
+# --- FUNCIONES DE PROCESAMIENTO DE DATOS ---
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=600) # Cache de 10 minutos para optimizar rendimiento y refrescar datos
 def load_data(file_or_url, is_url=False):
+    """Carga y preprocesa los datos desde CSV, Excel o URL de Google Sheets."""
     try:
         df = None
         if is_url:
             url = file_or_url
             if "docs.google.com/spreadsheets" in url:
+                # Conversión automática de link de vista a link de exportación CSV
                 if "/edit" in url:
                     url = url.split("/edit")[0] + "/export?format=csv"
                 elif "/view" in url:
@@ -115,7 +128,8 @@ def load_data(file_or_url, is_url=False):
             else:
                 df = pd.read_excel(file_or_url)
         
-        # --- FUSIÓN ROBUSTA DE CARRERAS ---
+        # Fusión robusta de columnas 'Carrera (F1)' y 'Carrera (F2)'
+        # Se reemplazan espacios vacíos por NaN para asegurar que fillna funcione correctamente
         if 'Carrera (F1)' in df.columns:
             df['Carrera (F1)'] = df['Carrera (F1)'].replace(r'^\s*$', np.nan, regex=True)
         if 'Carrera (F2)' in df.columns:
@@ -128,8 +142,10 @@ def load_data(file_or_url, is_url=False):
         elif 'Carrera (F2)' in df.columns:
             df['Carrera'] = df['Carrera (F2)']
         
+        # Renombrar columnas según mapa interno
         df.rename(columns={k: v for k, v in PREGUNTA_MAP.items() if k in df.columns}, inplace=True)
         
+        # Conversión de tipos
         if 'Timestamp' in df.columns: 
             df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce', dayfirst=True)
 
@@ -139,29 +155,38 @@ def load_data(file_or_url, is_url=False):
 
         return df
     except Exception as e:
+        if is_url and not file_or_url:
+            return None # Retorno silencioso si no hay URL configurada
         st.error(f"Error al cargar datos: {e}")
         return None
 
 def extract_teachers_from_row(row_str, official_names, mapping_dict):
-    """Extrae y normaliza nombres de docentes."""
+    """
+    Extrae y normaliza nombres de docentes desde una celda de texto libre.
+    Busca coincidencias con la lista oficial y variantes conocidas.
+    """
     found = set()
     row_clean = str(row_str).strip()
     
-    # 1. Buscar nombres oficiales exactos
+    # 1. Búsqueda exacta de nombres oficiales
     for t in official_names:
         if t in row_clean: found.add(t)
     
-    # 2. Buscar variantes y normalizar
+    # 2. Búsqueda y reemplazo de variantes conocidas
     for variant, official in mapping_dict.items():
         if variant in row_clean: found.add(official)
         
-    # 3. Fallback
+    # 3. Fallback: Si no se encuentra nada oficial, se mantiene el dato original limpio
     if not found and row_clean.lower() not in ['nan', 'sin especificar', '']:
         return [p.strip() for p in row_clean.split(',')]
         
     return sorted(list(found))
 
 def calcular_sentimiento(df_input):
+    """
+    Calcula un índice de sentimiento basado en palabras clave (positivas/negativas)
+    encontradas en los comentarios abiertos.
+    """
     text_cols = ['Opinion_Mejoras', 'Opinion_Aula_Virtual', 'Opinion_Charla']
     valid = [c for c in text_cols if c in df_input.columns]
     if not valid: return "Sin datos", "#808080"
@@ -175,6 +200,7 @@ def calcular_sentimiento(df_input):
         if len(txt) < 3: continue
         p = sum(1 for w in pos if w in txt)
         n = sum(1 for w in neg if w in txt)
+        # Se limita el impacto individual de un solo comentario
         val = max(min(p - n, 3), -3)
         score += val; count += 1
         
@@ -187,8 +213,9 @@ def calcular_sentimiento(df_input):
     elif avg < -0.1: return "Algo Negativo 😐", "#ffc107"
     else: return "Neutro 😐", "#6c757d"
 
-# --- UI PRINCIPAL ---
+# --- INTERFAZ GRÁFICA (UI) ---
 
+# Header Personalizado (CSS)
 st.markdown("""
 <style>
     .header-container {
@@ -228,21 +255,33 @@ st.markdown("""
 
 st.title("📊 Encuesta del Laboratorio de Física")
 
-src = st.radio("Fuente de Datos:", ("Pegar Link de Google Sheet", "Subir Archivo (.xlsx / .csv)"), horizontal=True)
+# Selector de Fuente de Datos
+# Permite al usuario elegir entre una fuente predefinida, pegar un link o subir un archivo
+opciones_fuente = ["📊 Datos Oficiales (Cargados)", "🔗 Pegar Link de Google Sheet", "📂 Subir Archivo (.xlsx / .csv)"]
+src = st.radio("Fuente de Datos:", opciones_fuente, horizontal=True, index=0)
+
 df = None
 
-if src == "Subir Archivo (.xlsx / .csv)":
+if src == "📊 Datos Oficiales (Cargados)":
+    if LINK_OFICIAL_ENCUESTA:
+        df = load_data(LINK_OFICIAL_ENCUESTA, is_url=True)
+    else:
+        st.warning("⚠️ No se ha configurado el link oficial en el código. Por favor, selecciona otra opción o edita la variable `LINK_OFICIAL_ENCUESTA`.")
+
+elif src == "📂 Subir Archivo (.xlsx / .csv)":
     up = st.file_uploader("Archivo", type=['csv', 'xlsx'])
     if up: df = load_data(up, False)
-else:
+
+else: # Pegar Link Manual
     url = st.text_input("Link Público:")
     if url: df = load_data(url, True)
 
 if df is not None:
+    # Procesamiento de Docentes: Normalización usando la lista oficial
     if 'Docentes' in df.columns:
         df['Docentes_List'] = df['Docentes'].apply(lambda x: extract_teachers_from_row(x, DOCENTES_OFICIALES, NORMALIZACION_DOCENTES))
 
-    # --- BARRA LATERAL (FILTROS) ---
+    # --- BARRA LATERAL: FILTROS ---
     st.sidebar.header("Filtros")
     
     if st.sidebar.button("🔄 Borrar Filtros", on_click=reset_filters, type="primary"):
@@ -273,13 +312,13 @@ if df is not None:
     viz_mode = st.sidebar.radio("Unidad:", ("Porcentaje (%)", "Cantidad Absoluta/Escala"), index=0, help="Cambia entre vista porcentual (0-100%) o valores absolutos (votos y escala 1-5).")
     is_pct = (viz_mode == "Porcentaje (%)")
 
-    # Aplicar Filtros
+    # --- APLICACIÓN DE FILTROS ---
     df_f = df.copy()
     if sel_lab != 'Todos': df_f = df_f[df_f['Laboratorio'] == sel_lab]
     if sel_car != 'Todas': df_f = df_f[df_f['Carrera'] == sel_car]
     if sel_doc != 'Todos': df_f = df_f[df_f['Docentes_List'].apply(lambda x: sel_doc in x)]
 
-    # --- MÉTRICAS TOP ---
+    # --- MÉTRICAS SUPERIORES ---
     tot, filt = len(df), len(df_f)
     pct = (filt/tot*100) if tot>0 else 0
     c1, c2, c3 = st.columns(3)
@@ -293,12 +332,12 @@ if df is not None:
     
     st.divider()
 
-    # --- INDICADORES GENERALES Y COMPARATIVA TOTAL ---
+    # --- SECCIÓN 1: RESUMEN GENERAL Y COMPARATIVAS ---
     st.markdown("### 📈 Resumen General y Comparativa")
     
     calif_cols = [c for c in df_f.columns if c.startswith('Calif_')]
     if calif_cols:
-        # A. Promedios Globales
+        # 1.1 Promedios Globales (Tarjetas)
         avgs = df_f[calif_cols].mean()
         cols_kpi = st.columns(len(calif_cols))
         for i, col in enumerate(calif_cols):
@@ -309,7 +348,7 @@ if df is not None:
         
         st.write("") 
         
-        # B. Comparativa TOTAL por Carrera
+        # 1.2 Gráfico de Comparativa Total por Carrera
         st.markdown("#### 🆚 Comparativa Global de Satisfacción por Carrera")
         
         df_f['Score_Global'] = df_f[calif_cols].mean(axis=1)
@@ -343,7 +382,7 @@ if df is not None:
 
     st.divider()
 
-    # --- ANÁLISIS DETALLADO ---
+    # --- SECCIÓN 2: ANÁLISIS DETALLADO POR PREGUNTA ---
     st.markdown("### 📝 Análisis Detallado por Pregunta")
     
     for col in calif_cols:
@@ -352,7 +391,7 @@ if df is not None:
         
         c_left, c_right = st.columns([1, 1])
         
-        # IZQ: Distribución
+        # Gráfico Izquierda: Distribución
         with c_left:
             cnt = df_f[col].value_counts().reindex([1,2,3,4,5], fill_value=0).reset_index()
             cnt.columns = ['Puntaje', 'Valor']
@@ -377,7 +416,7 @@ if df is not None:
             st.plotly_chart(fig1, use_container_width=True, key=f"dist_{col}")
             st.caption("Distribución de los puntajes otorgados (escala 1 a 5) para este aspecto específico.")
 
-        # DER: Comparativa Carrera
+        # Gráfico Derecha: Comparativa por Carrera
         with c_right:
             cg = df_f.groupby('Carrera')[col].agg(['mean', 'count']).reset_index().sort_values('mean', ascending=True)
             
@@ -407,10 +446,10 @@ if df is not None:
             
         st.divider()
 
-    # --- TEXTO: NUBE Y COMENTARIOS ---
+    # --- SECCIÓN 3: TEXTO (NUBE Y COMENTARIOS) ---
     st.markdown("### ☁️ Comentarios y Opiniones")
     
-    # Nube de Palabras
+    # 3.1 Nube de Palabras
     st.markdown("#### Palabras Clave")
     if 'Palabras_Clave' in df_f.columns:
         txt = " ".join(df_f['Palabras_Clave'].dropna().astype(str))
@@ -425,13 +464,13 @@ if df is not None:
     
     st.divider()
 
-    # --- SECCIÓN OPINIONES (3 COLUMNAS TEMÁTICAS) ---
+    # 3.2 Opiniones Detalladas (3 Columnas Temáticas)
     st.markdown("#### Últimas Opiniones")
     
     text_cols_display = ['Opinion_Mejoras', 'Opinion_Aula_Virtual', 'Opinion_Charla']
     df_comments = df_f.dropna(subset=text_cols_display, how='all')
     
-    # Controles de Ordenamiento y Cantidad
+    # Controles de Orden y Cantidad
     c_sort, c_limit = st.columns([1, 1])
     with c_sort:
         sort_mode = st.selectbox("Ordenar por:", ["Más Recientes", "Longitud (Texto)"])
@@ -446,13 +485,14 @@ if df is not None:
             df_comments['text_len'] = df_comments[text_cols_display].astype(str).sum(axis=1).str.len()
             df_comments = df_comments.sort_values('text_len', ascending=False)
 
-        # Lógica de Limite
+        # Lógica de Límite
         if limit_mode != "Todos":
             df_comments = df_comments.head(int(limit_mode))
         
-        # Display en 3 columnas Temáticas
+        # Grid de 3 columnas temáticas
         c1, c2, c3 = st.columns(3)
         
+        # Columna 1: Mejoras
         with c1:
             st.markdown("##### 💡 Aspectos a Mejorar / Buenos")
             for idx, row in df_comments.iterrows():
@@ -461,6 +501,7 @@ if df is not None:
                         st.caption(f"👤 {row.get('Carrera', '')} ({row.get('Laboratorio', '')})")
                         st.markdown(f"{row['Opinion_Mejoras']}")
 
+        # Columna 2: Aula Virtual
         with c2:
             st.markdown("##### 💻 Aula Virtual")
             for idx, row in df_comments.iterrows():
@@ -469,6 +510,7 @@ if df is not None:
                         st.caption(f"👤 {row.get('Carrera', '')} ({row.get('Laboratorio', '')})")
                         st.markdown(f"{row['Opinion_Aula_Virtual']}")
 
+        # Columna 3: Charla TP3
         with c3:
             st.markdown("##### 🗣️ Charla TP3")
             for idx, row in df_comments.iterrows():
@@ -485,9 +527,9 @@ if df is not None:
     with st.expander("📂 Ver Base de Datos Completa (Descargable)"):
         st.dataframe(df_f)
 
-elif src == "Subir Archivo (.xlsx / .csv)" and not st.session_state.get('uploaded_file'):
+elif src == "📂 Subir Archivo (.xlsx / .csv)" and not st.session_state.get('uploaded_file'):
     st.info("Sube un archivo para comenzar.")
-elif src == "Pegar Link de Google Sheet":
+elif src == "🔗 Pegar Link de Google Sheet":
     st.info("Pega el link arriba.")
 
 st.markdown("---")
