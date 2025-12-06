@@ -20,7 +20,7 @@ import numpy as np
 # --- CONFIGURACIÓN DE DATOS POR DEFECTO ---
 # INSTRUCCIÓN: Pegar el enlace público de Google Sheets dentro de las comillas.
 # Esto permitirá que el dashboard cargue los datos automáticamente al abrirse.
-LINK_OFICIAL_ENCUESTA = "" 
+LINK_OFICIAL_ENCUESTA = "https://docs.google.com/spreadsheets/d/16P0S2VltRb5-rGqhZo1apuyMsGj7okH3286MbJw_3fo/edit?pli=1&gid=746880333#gid=746880333" 
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -543,3 +543,4 @@ st.markdown(f"""
     </p>
 </div>
 """, unsafe_allow_html=True)
+
