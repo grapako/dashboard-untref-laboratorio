@@ -5,12 +5,7 @@ Autores: J. I. Peralta & Gemini Pro 3.0
 Fecha: 05/12/2025
 
 Descripción:
-Aplicación web interactiva desarrollada con Streamlit para el análisis de encuestas 
-de satisfacción estudiantil.
-Características de Robustez:
-- Detección automática de nuevas preguntas numéricas (escalas).
-- Visualización estructurada de comentarios con tolerancia a fallos.
-- Normalización inteligente de nombres de docentes.
+Aplicación web interactiva desarrollada con Streamlit para el análisis de encuestas
 """
 
 import streamlit as st
@@ -21,7 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # --- CONFIGURACIÓN DE DATOS POR DEFECTO ---
-LINK_OFICIAL_ENCUESTA = "https://docs.google.com/spreadsheets/d/16P0S2VltRb5-rGqhZo1apuyMsGj7okH3286MbJw_3fo/edit?pli=1&gid=746880333#gid=746880333" 
+LINK_OFICIAL_ENCUESTA = "https://docs.google.com/spreadsheets/d/1xiz_2A3bWK5vAd6MkCIC0dIXfiMcYqs3UpCQvRtZ1Mg/edit?usp=sharing" 
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -147,15 +142,11 @@ def load_data(file_or_url, is_url=False):
         st.error(f"Error al cargar datos: {e}")
         return None
 
+# JIP: Método que mira la varianza y tipo de contenido
 def identify_columns(df):
-    """
-    Identifica dinámicamente columnas numéricas para gráficos y de texto para opiniones.
-    Permite que el dashboard funcione aunque cambien las preguntas.
-    """
     numeric_cols = []
     text_cols = []
     
-    # Columnas a ignorar en el análisis automático (incluimos F1 y F2 por seguridad)
     ignore_cols = [
         'Timestamp', 'Laboratorio', 'Carrera', 'Docentes', 
         'Docentes_List', 'Score_Global', 'Carrera (F1)', 'Carrera (F2)'
@@ -164,20 +155,31 @@ def identify_columns(df):
     for col in df.columns:
         if col in ignore_cols: continue
         
-        # Detección de Métricas (Ratings 1-10)
+        # Numérico (Ratings)
         if pd.api.types.is_numeric_dtype(df[col]):
-            if df[col].max() <= 10: 
-                numeric_cols.append(col)
+            if df[col].max() <= 10: numeric_cols.append(col)
         
-        # Detección de Comentarios (Texto largo)
+        # Texto (Opiniones)
         elif pd.api.types.is_string_dtype(df[col]) or pd.api.types.is_object_dtype(df[col]):
-            non_na = df[col].dropna().astype(str)
-            if len(non_na) > 0:
-                mean_len = non_na.str.len().mean()
-                if mean_len > 15: # Umbral para diferenciar opinión de categoría
-                    text_cols.append(col)
+            # 1. Filtramos nulos
+            valid_data = df[col].dropna().astype(str)
+            if len(valid_data) == 0: continue
+            
+            # 2. Criterio de "Riqueza":
+            # Si el 80% de las respuestas son únicas, probablemente es texto libre.
+            # Si hay pocas respuestas únicas (ej: "Si", "No"), es una categoría.
+            n_unique = valid_data.nunique()
+            ratio_unique = n_unique / len(valid_data)
+            
+            # 3. Criterio de Longitud (reaseguro)
+            # Solo si la longitud promedio es decente (>5 chars) Y son variadas
+            mean_len = valid_data.str.len().mean()
+            
+            if ratio_unique > 0.5 and mean_len > 10:
+                text_cols.append(col)
                 
     return numeric_cols, text_cols
+
 
 def extract_teachers_from_row(row_str, official_names, mapping_dict):
     found = set()
@@ -190,32 +192,112 @@ def extract_teachers_from_row(row_str, official_names, mapping_dict):
         return [p.strip() for p in row_clean.split(',')]
     return sorted(list(found))
 
+
+def clean_text_for_wordcloud(text):
+    """
+    Limpieza ligera específica para la nube de palabras de este laboratorio.
+    Normaliza género, elimina conectores y unifica términos comunes.
+    """
+    if not isinstance(text, str): return ""
+    
+    # 1. Minúsculas y limpieza básica
+    text = text.lower()
+    # Reemplazar puntuación por espacios
+    for char in [',', '.', '-', ';', '(', ')', '/']:
+        text = text.replace(char, ' ')
+    
+    words = text.split()
+    
+    # 2. Lista de Stopwords (Palabras a ignorar)
+    stopwords = {
+        'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',  'tenía', 
+        'y', 'e', 'ni', 'o', 'u', 'de', 'del', 'a', 'al', 'con', 
+        'sin', 'por', 'para', 'en', 'sobre', 'que', 'mi', 'tu', 'su',
+        'fue', 'muy', 'mas', 'más', 'pero', 'todo', 'laboratorio', 'labo'
+    }
+    
+    # 3. Diccionario de Unificación (Corrección manual ligera)
+    # Mapea: Variante -> Palabra Raíz
+    replacements = {
+        'divertida': 'divertido', 'divertidas': 'divertido',
+        'entretenida': 'entretenido', 'entretenidas': 'entretenido',
+        'cansadora': 'cansador',
+        'estresante': 'estresante', # estres es estresante
+        'confusa': 'confuso', 'confusas': 'confuso', 'confusion': 'confuso',
+        'buena': 'bueno', 'buenas': 'bueno',
+        'utiles': 'util', 'útil': 'util', 'útiles': 'util',
+        'prácticos': 'practico', 'práctica': 'practico', 'practica': 'practico',
+        'dinamica': 'dinamico', 'dinámica': 'dinamico',
+        'interesante': 'interesante', 'interesantes': 'interesante',
+        'exigente': 'exigente',
+        'organizacion': 'organizado', 'desorden': 'desorganizado',
+        'dificil': 'difícil'
+    }
+    
+    cleaned_words = []
+    for w in words:
+        if w in stopwords or len(w) < 2: continue
+        # Aplicar reemplazo si existe, sino dejar la palabra original
+        w_clean = replacements.get(w, w)
+        cleaned_words.append(w_clean)
+        
+    return " ".join(cleaned_words)
+
+
+# JIP: Versión que tiene en cuenta las negaciones
 def calcular_sentimiento(df_input, text_columns):
-    """Calcula sentimiento usando las columnas de texto detectadas."""
+    """Calcula sentimiento detectando negaciones antes de adjetivos."""
     if not text_columns: return "Sin datos", "#808080"
     
-    pos = ['bueno', 'buena', 'excelente', 'útil', 'claro', 'ayuda', 'mejor', 'bien', 'interesante', 'gustó', 'sirvió', 'aprendizaje', 'buenos', 'claras', 'dinamica', 'agil', 'correcta']
-    neg = ['malo', 'mala', 'confuso', 'difícil', 'complicado', 'tarde', 'desorganizado', 'problema', 'pésimo', 'no entendí', 'lento', 'poco', 'falta', 'injusto', 'perdido']
+    # Listas ampliadas
+    pos = {'bueno', 'buena', 'buenos', 'buenas', 'excelente', 'excelentes', 'util', 'utiles', 'claro', 
+           'clara', 'claras', 'claros', 'mejor', 'mejores', 'bien', 'gusto', 'gustó', 'sirvio', 'sirvió', 
+           'aprendizaje', 'dinamica', 'dinámico', 'dinamico', 'correcto', 'correcta', 'interesante', 
+           'interesantes', 'llevadero', 'llevadera'}
+    neg = {'malo', 'mala', 'malos', 'malas', 'confuso', 'confusa', 'dificil', 'difícil', 'complicado', 
+           'complicada', 'tarde', 'desorganizado', 'pesimo', 'pésimo', 'lento', 'lenta', 'poco', 
+           'injusto', 'perdido', 'aburrido', 'aburrida', 'tedioso', 'pesado', 'pesada'}
+    negators = {'no', 'nunca', 'jamás', 'poco', 'menos', 'nada'}
     
     score = 0; count = 0
+    
     for _, row in df_input.iterrows():
-        # Concatenar todo el texto de esa fila usando columnas que existen
+        # Unir y limpiar
         full_text = " ".join([str(row[c]) for c in text_columns if c in row and pd.notna(row[c])]).lower()
-        if len(full_text) < 3: continue
+        # Quitar puntuación básica para tokenizar bien
+        for char in ['.', ',', ';', '!', '?']: full_text = full_text.replace(char, ' ')
         
-        p = sum(1 for w in pos if w in full_text)
-        n = sum(1 for w in neg if w in full_text)
-        val = max(min(p - n, 3), -3)
-        score += val; count += 1
+        words = full_text.split()
+        row_score = 0
+        
+        for i, w in enumerate(words):
+            val = 0
+            if w in pos: val = 1
+            elif w in neg: val = -1
+            
+            # Chequear negación en la palabra anterior (ventana de 1)
+            if val != 0 and i > 0 and words[i-1] in negators:
+                val *= -1.5 # Invierte y da peso (ej: "no bueno" -> malo)
+            
+            row_score += val
+            
+        # Normalizar el score de la fila entre -3 y 3
+        row_score = max(min(row_score, 3), -3)
+        if row_score != 0: # Solo contar si hubo algo de sentimiento detectado
+            score += row_score
+            count += 1
         
     if count == 0: return "Neutro / Sin Texto", "#808080"
+    
     avg = score / count
     
+    # Umbrales ajustados
     if avg > 0.5: return "Muy Positivo 😄", "#28a745"
     elif avg > 0.1: return "Positivo 🙂", "#90EE90"
     elif avg < -0.5: return "Negativo 😟", "#dc3545"
     elif avg < -0.1: return "Algo Negativo 😐", "#ffc107"
     else: return "Neutro 😐", "#6c757d"
+
 
 # --- UI PRINCIPAL ---
 
@@ -279,6 +361,10 @@ if df is not None:
     # 1. Identificar columnas dinámicamente
     rating_cols, text_cols = identify_columns(df)
     
+    # Forzar la inclusión de Palabras_Clave para el sentimiento, aunque sea texto corto
+    if 'Palabras_Clave' in df.columns and 'Palabras_Clave' not in text_cols:
+        text_cols.append('Palabras_Clave')
+
     # 2. Procesar Docentes
     if 'Docentes' in df.columns:
         df['Docentes_List'] = df['Docentes'].apply(lambda x: extract_teachers_from_row(x, DOCENTES_OFICIALES, NORMALIZACION_DOCENTES))
@@ -312,11 +398,16 @@ if df is not None:
     c1, c2, c3 = st.columns(3)
     c1.metric("Encuestas", f"{filt} de {tot}", f"{pct:.1f}% muestra")
 
-    sent_txt, sent_col = calcular_sentimiento(df_f, text_cols)
+    # sent_txt, sent_col = calcular_sentimiento(df_f, text_cols) # JIP: detección automática
+    # Ejemplo manual:
+    text_cols_manual = ['Opinion_Mejoras', 'Palabras_Clave']
+    sent_txt, sent_col = calcular_sentimiento(df_f, text_cols_manual)
+
     with c2:
         st.markdown(f"<div style='background:{sent_col};color:white;padding:10px;border-radius:5px;text-align:center'><b>{sent_txt}</b></div>", unsafe_allow_html=True)
     with c3:
-         st.caption("Termómetro basado en análisis de palabras clave.")
+        fuentes_sentimiento = [c.replace('Opinion_', '').replace('_', ' ') for c in text_cols_manual]
+        st.caption(f"**Fuentes del análisis:** Preg. {' + '.join(fuentes_sentimiento)}.")
     
     st.divider()
 
@@ -411,16 +502,18 @@ if df is not None:
             
         st.divider()
 
-    # --- 3. COMENTARIOS (Robusto y Estructurado) ---
+    # --- 3. COMENTARIOS ---
     st.markdown("### ☁️ Comentarios y Opiniones")
     
     # Nube (Exclusiva de Palabras Clave)
     cloud_col = 'Palabras_Clave'
     if cloud_col in df_f.columns:
-        txt_cloud = " ".join(df_f[cloud_col].dropna().astype(str))
-        if len(txt_cloud) > 20:
+        raw_txt = " ".join(df_f[cloud_col].dropna().astype(str))
+        txt_cloud = clean_text_for_wordcloud(raw_txt) # JIP: Limpieza
+        if len(txt_cloud) > 10:
             st.markdown("#### Palabras Clave Globales")
-            wc = WordCloud(width=1200, height=400, background_color='white').generate(txt_cloud)
+            st.caption("Fuente: Pregunta 'Escribí tres palabras...'")
+            wc = WordCloud(width=1200, height=400, background_color='white', colormap='viridis', regexp=r"\w+", random_state=42).generate(txt_cloud)
             fig, ax = plt.subplots(figsize=(12, 4))
             ax.imshow(wc); ax.axis("off")
             plt.close(fig)
@@ -428,7 +521,7 @@ if df is not None:
     
     st.divider()
 
-    # Opiniones en 3 Columnas Dinámicas (ROBUSTAS)
+    # Opiniones en 3 Columnas Dinámicas
     st.markdown("#### Últimas Opiniones")
     
     # Identificar columnas de texto que NO son palabras clave
@@ -458,7 +551,6 @@ if df is not None:
             cols = st.columns(len(cols_to_render))
             
             for i, col_name in enumerate(cols_to_render):
-                # Título amigable (limpia alias internos o usa nombre original)
                 header = REVERSE_MAP.get(col_name, col_name)
                 header = header.replace('Opinion_', '').replace('_', ' ').title()
                 
@@ -477,19 +569,12 @@ if df is not None:
 
     st.divider()
     
-    # Tabla ampliada segura
-    cols_extra_info = ['Laboratorio', 'Carrera']
-    cols_text_table = [c for c in cols_extra_info + display_text_cols if c in df_f.columns]
-    
-    with st.expander("📂 Ver Base de Datos y Comentarios Completos"):
-        if len(cols_text_table) > len(cols_extra_info):
-             st.markdown("#### Tabla de Comentarios")
-             st.dataframe(df_f[cols_text_table].dropna(how='all', subset=display_text_cols), use_container_width=True)
-        st.markdown("#### Datos Crudos")
+
+    with st.expander("📂 Ver Base de Datos (Filtros actuales)"):
         st.dataframe(df_f)
 
 elif src == "📂 Subir Archivo (.xlsx / .csv)" and not st.session_state.get('uploaded_file'):
-    st.info("Sube un archivo para comenzar.")
+    st.info("Sube un archivo del formulario para comenzar.")
 elif src == "🔗 Pegar Link de Google Sheet":
     st.info("Pega el link arriba.")
 
