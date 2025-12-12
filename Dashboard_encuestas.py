@@ -596,12 +596,12 @@ if df is not None:
         df_comments = df_f.dropna(subset=display_text_cols, how='all').copy()
         
         c_sort, c_limit = st.columns([1, 1])
-        with c_sort: sort_mode = st.selectbox("Ordenar por:", ["Más Recientes", "Longitud (Texto)"])
-        with c_limit: limit_mode = st.selectbox("Mostrar:", [10, 20, 50, "Todos"], index=0)
+        with c_sort: sort_mode = st.selectbox("Ordenar por:", ["Últimos", "Longitud (Texto)"])
+        with c_limit: limit_mode = st.selectbox("Mostrar:", [10, 20, "Todos"], index=2)
 
         if not df_comments.empty:
             # 2. Lógica de Ordenamiento Explícita
-            if sort_mode == "Más Recientes" and 'Timestamp' in df_comments.columns:
+            if sort_mode == "Últimos" and 'Timestamp' in df_comments.columns:
                 df_comments = df_comments.sort_values('Timestamp', ascending=False)
             
             elif sort_mode == "Longitud (Texto)":
@@ -668,7 +668,7 @@ elif src == "🔗 Pegar Link de Google Sheet":
 st.markdown("---")
 st.markdown(f"""
 <div style="text-align: center; color: grey; padding-top: 20px;">
-    <p>Desarrollado por: <b>J. I. Peralta</b> & <b>Gemini Pro 3.0</b> | Fecha: 05/12/2025</p>
+    <p>Desarrollado por: <b>J. I. Peralta</b> & <b>Gemini Pro 3.0</b> | Fecha: 12/12/2025</p>
     <p>
         <a href="mailto:jperalta@untref.edu.ar" style="color: grey; text-decoration: none;">📧 jperalta@untref.edu.ar</a> | 
         <a href="https://www.linkedin.com/in/juaniperalta/" style="color: grey; text-decoration: none;">🔗 LinkedIn</a>
