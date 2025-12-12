@@ -539,7 +539,7 @@ if df is not None:
     display_text_cols = [c for c in text_cols if c != 'Palabras_Clave']
     
     if display_text_cols:
-        st.caption(f"Fuentes: {', '.join([c.replace('Opinion_', '') for c in display_text_cols])}")
+        # st.caption(f"Fuentes: {', '.join([c.replace('Opinion_', '') for c in display_text_cols])}")
         
         # 1. Forzamos .copy() para romper el vínculo con el original y evitar errores de ordenamiento
         df_comments = df_f.dropna(subset=display_text_cols, how='all').copy()
