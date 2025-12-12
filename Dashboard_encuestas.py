@@ -20,7 +20,7 @@ LINK_OFICIAL_ENCUESTA = "https://docs.google.com/spreadsheets/d/1xiz_2A3bWK5vAd6
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
-    page_title="Resultados Encuesta del laboratorio de Física",
+    page_title="Resultados de la Encuesta del Laboratorio de Física",
     page_icon="📊",
     layout="wide"
 )
@@ -413,7 +413,7 @@ if df is not None:
 
     # --- 1. RESUMEN GENERAL ---
     st.markdown("### 📈 Resumen General y Comparativa")
-    
+    st.markdown("Promedios de satisfacción (escala 1 a 5) y comparación global entre carreras.")
     if rating_cols:
         avgs = df_f[rating_cols].mean()
         for i in range(0, len(rating_cols), 4):
@@ -421,14 +421,25 @@ if df is not None:
             for j, col in enumerate(rating_cols[i:i+4]):
                 with cols_kpi[j]:
                     val = avgs[col]
-                    lbl = col.replace('Calif_', '').replace('_', ' ') if col.startswith('Calif_') else col
+
+                    nombres_kpi = {
+                        'Calif_Guias': 'Claridad de las Guías',
+                        'Calif_Videos': 'Utilidad de los Videos',
+                        'Calif_Coord_Teoria': 'Coordinación con la Teoría',
+                        'Calif_Docentes_Expl': 'Explicación de los Docentes',
+                        'Calif_Correcciones': 'Valor de las Correcciones',
+                        'Calif_Impacto_Aprendizaje': 'Impacto en el Aprendizaje'
+                    }
+                    # Usa el nombre bonito si existe, sino usa el original limpio
+                    lbl = nombres_kpi.get(col, col.replace('Calif_', '').replace('_', ' '))
+                    
                     d_val = f"{(val/5)*100:.0f}%" if is_pct else f"{val:.2f}"
                     st.metric(lbl, d_val)
         
         st.write("") 
         
         # Comparativa Global por Carrera
-        st.markdown("#### 🆚 Comparativa Global de Satisfacción por Carrera")
+        st.markdown("#### 🆚 Comparativa Global por Carrera")
         df_f['Score_Global'] = df_f[rating_cols].mean(axis=1)
         career_global = df_f.groupby('Carrera')['Score_Global'].agg(['mean', 'count']).reset_index().sort_values('mean', ascending=True)
         
@@ -528,40 +539,65 @@ if df is not None:
     display_text_cols = [c for c in text_cols if c != 'Palabras_Clave']
     
     if display_text_cols:
-        # Filtramos filas vacías
-        df_comments = df_f.dropna(subset=display_text_cols, how='all')
+        st.caption(f"Fuentes: {', '.join([c.replace('Opinion_', '') for c in display_text_cols])}")
+        
+        # 1. Forzamos .copy() para romper el vínculo con el original y evitar errores de ordenamiento
+        df_comments = df_f.dropna(subset=display_text_cols, how='all').copy()
         
         c_sort, c_limit = st.columns([1, 1])
         with c_sort: sort_mode = st.selectbox("Ordenar por:", ["Más Recientes", "Longitud (Texto)"])
         with c_limit: limit_mode = st.selectbox("Mostrar:", [10, 20, 50, "Todos"], index=0)
 
         if not df_comments.empty:
+            # 2. Lógica de Ordenamiento Explícita
             if sort_mode == "Más Recientes" and 'Timestamp' in df_comments.columns:
                 df_comments = df_comments.sort_values('Timestamp', ascending=False)
+            
             elif sort_mode == "Longitud (Texto)":
-                df_comments['text_len'] = df_comments[display_text_cols].astype(str).sum(axis=1).str.len()
-                df_comments = df_comments.sort_values('text_len', ascending=False)
-
-            if limit_mode != "Todos": df_comments = df_comments.head(int(limit_mode))
-            
-            # --- LAYOUT DE 3 COLUMNAS ADAPTATIVO ---
-            # Tomamos hasta 3 columnas de texto. Si hay 2, usa 2. Si hay 4, usa las primeras 3.
-            # Esto evita errores si falta una columna o hay nuevas.
-            cols_to_render = display_text_cols[:3]
-            cols = st.columns(len(cols_to_render))
-            
-            for i, col_name in enumerate(cols_to_render):
-                header = REVERSE_MAP.get(col_name, col_name)
-                header = header.replace('Opinion_', '').replace('_', ' ').title()
+                # Calculamos longitud sumando todos los caracteres de las columnas de texto
+                # fillna("") convierte vacíos en texto vacío (largo 0) para no romper la suma
+                df_comments['largo_total'] = df_comments[display_text_cols].fillna("").astype(str).sum(axis=1).str.len()
                 
-                with cols[i]:
-                    st.markdown(f"##### 🗣️ {header}")
-                    for idx, row in df_comments.iterrows():
+                # Ordenamos usando esa columna nueva
+                df_comments = df_comments.sort_values('largo_total', ascending=False)
+
+            # 3. Límite (aplicado SIEMPRE después de ordenar)
+            if limit_mode != "Todos": 
+                df_comments = df_comments.head(int(limit_mode))
+            
+            # --- DISEÑO TABLA COMPACTA ---
+
+            cols_header = st.columns(len(display_text_cols))
+            
+            for i, col_name in enumerate(display_text_cols):
+                header = REVERSE_MAP.get(col_name, col_name).replace('Opinion_', '').replace('_', ' ').title()
+                # Encabezado en negrita y color primario para destacar
+                cols_header[i].markdown(f"**:blue[{header}]**")
+            
+            st.markdown("<div style='text-align: center; color: grey; font-size: 0.8em;'><i>(Desplácese verticalmente por la tabla para recorrer los comentarios)</i></div>", unsafe_allow_html=True)
+            st.divider() 
+            
+            # 2. CUERPO SCROLLABLE
+            with st.container(height=600, border=False):
+                
+                for idx, row in df_comments.iterrows():
+                    st.markdown(f"""
+                    <div style="font-size: 0.85em; color: gray; margin-bottom: 5px;">
+                        👤 <b>{row.get('Carrera', '')}</b> <span style="opacity: 0.6">| {row.get('Laboratorio', '')}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Columnas de respuestas (Alineadas con la cabecera)
+                    cols_row = st.columns(len(display_text_cols))
+                    for i, col_name in enumerate(display_text_cols):
                         val = row.get(col_name)
-                        if pd.notna(val) and len(str(val)) > 3:
-                            with st.container(border=True):
-                                st.caption(f"👤 {row.get('Carrera', '')} ({row.get('Laboratorio', '')})")
-                                st.markdown(f"{val}")
+                        with cols_row[i]:
+                            if pd.notna(val) and len(str(val)) > 1:
+                                texto_limpio = str(val).strip()
+                                st.markdown(f"“{texto_limpio}”")
+                            else:
+                                st.caption("[No responde.]")
+
         else:
             st.info("No hay comentarios disponibles.")
     else:
