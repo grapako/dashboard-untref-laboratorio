@@ -18,6 +18,7 @@ import unicodedata
 
 # --- CONFIGURACIÓN DE DATOS POR DEFECTO ---
 LINK_OFICIAL_ENCUESTA = "https://docs.google.com/spreadsheets/d/1xiz_2A3bWK5vAd6MkCIC0dIXfiMcYqs3UpCQvRtZ1Mg/edit?usp=sharing" 
+MOSTRAR_FILTRO_DOCENTES = False 
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -27,11 +28,13 @@ st.set_page_config(
 )
 
 # --- GESTIÓN DE ESTADO ---
+if 'materia_filter' not in st.session_state: st.session_state.materia_filter = 'Todas'
 if 'lab_filter' not in st.session_state: st.session_state.lab_filter = 'Todos'
 if 'car_filter' not in st.session_state: st.session_state.car_filter = 'Todas'
 if 'doc_filter' not in st.session_state: st.session_state.doc_filter = 'Todos'
 
 def reset_filters():
+    st.session_state.materia_filter = 'Todas'
     st.session_state.lab_filter = 'Todos'
     st.session_state.car_filter = 'Todas'
     st.session_state.doc_filter = 'Todos'
@@ -101,25 +104,39 @@ def load_data(file_or_url, is_url=False):
             if file_or_url.name.endswith('.csv'): df = pd.read_csv(file_or_url)
             else: df = pd.read_excel(file_or_url)
         
-        # 1. Fusión Robusta de Carreras
-        # Reemplazar espacios vacíos por NaN para asegurar funcionamiento de fillna
+        # 1. Fusión Robusta de Carreras y Detección de Materia (Física I vs Física II)
+        
+        # Limpieza inicial de nulos/espacios
         if 'Carrera (F1)' in df.columns:
             df['Carrera (F1)'] = df['Carrera (F1)'].replace(r'^\s*$', np.nan, regex=True)
         if 'Carrera (F2)' in df.columns:
             df['Carrera (F2)'] = df['Carrera (F2)'].replace(r'^\s*$', np.nan, regex=True)
 
+        # Lógica de Materia y Unificación
         if 'Carrera (F1)' in df.columns and 'Carrera (F2)' in df.columns:
             df['Carrera'] = df['Carrera (F1)'].fillna(df['Carrera (F2)'])
+            
+            # Crear columna Materia basada en dónde está el dato
+            # Si tiene dato en F1 es Física I, si no y tiene en F2 es Física II
+            df['Materia'] = np.where(df['Carrera (F1)'].notna(), 'Física I', 
+                                     np.where(df['Carrera (F2)'].notna(), 'Física II', 'Sin Especificar'))
+                                     
         elif 'Carrera (F1)' in df.columns:
             df['Carrera'] = df['Carrera (F1)']
+            df['Materia'] = 'Física I'
         elif 'Carrera (F2)' in df.columns:
             df['Carrera'] = df['Carrera (F2)']
+            df['Materia'] = 'Física II'
         elif 'Carrera' not in df.columns:
             carrera_candidates = [c for c in df.columns if 'Carrera' in c]
             if carrera_candidates:
                 df['Carrera'] = df[carrera_candidates[0]]
             else:
                 df['Carrera'] = 'Sin Especificar'
+            df['Materia'] = 'Sin Especificar'
+        else:
+            # Caso fallback si existe 'Carrera' pero no las F1/F2
+            if 'Materia' not in df.columns: df['Materia'] = 'Sin Especificar'
 
         # Limpieza: Eliminar las columnas originales F1/F2 para que no ensucien el análisis de texto
         cols_to_drop = [c for c in ['Carrera (F1)', 'Carrera (F2)'] if c in df.columns]
@@ -133,7 +150,7 @@ def load_data(file_or_url, is_url=False):
         if 'Timestamp' in df.columns: 
             df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce', dayfirst=True)
 
-        for c in ['Laboratorio', 'Carrera', 'Docentes']:
+        for c in ['Laboratorio', 'Carrera', 'Docentes', 'Materia']:
             if c not in df.columns: df[c] = 'Sin Especificar'
             else: df[c] = df[c].fillna('Sin Especificar').astype(str)
 
@@ -143,13 +160,14 @@ def load_data(file_or_url, is_url=False):
         st.error(f"Error al cargar datos: {e}")
         return None
 
-# JIP: Método que mira la varianza y tipo de contenido
+
 def identify_columns(df):
+    """Identifica automáticamente columnas numéricas (KPIs) y de texto (Opiniones)."""
     numeric_cols = []
     text_cols = []
     
     ignore_cols = [
-        'Timestamp', 'Laboratorio', 'Carrera', 'Docentes', 
+        'Timestamp', 'Laboratorio', 'Carrera', 'Docentes', 'Materia',
         'Docentes_List', 'Score_Global', 'Carrera (F1)', 'Carrera (F2)'
     ]
 
@@ -168,12 +186,10 @@ def identify_columns(df):
             
             # 2. Criterio de "Riqueza":
             # Si el 80% de las respuestas son únicas, probablemente es texto libre.
-            # Si hay pocas respuestas únicas (ej: "Si", "No"), es una categoría.
             n_unique = valid_data.nunique()
             ratio_unique = n_unique / len(valid_data)
             
             # 3. Criterio de Longitud (reaseguro)
-            # Solo si la longitud promedio es decente (>5 chars) Y son variadas
             mean_len = valid_data.str.len().mean()
             
             if ratio_unique > 0.5 and mean_len > 10:
@@ -194,51 +210,49 @@ def extract_teachers_from_row(row_str, official_names, mapping_dict):
     return sorted(list(found))
 
 
-
-# 2. Lista de Stopwords (Palabras a ignorar, cargar sin acento)
+# Lista de Stopwords (Palabras a ignorar). 
+# NOTA: Deben estar sin tilde porque el limpiador las quita antes de comparar.
 stopwords = {
     'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',  'tenia', 'algun',
     'y', 'e', 'ni', 'o', 'u', 'de', 'del', 'a', 'al', 'con', 'os', 'alumnos',
     'sin', 'por', 'para', 'en', 'sobre', 'que', 'mi', 'tu', 'su',
-    'fue', 'muy', 'mas', 'más', 'pero', 'todo', 'laboratorio', 'labo'
+    'fue', 'muy', 'mas', 'pero', 'todo', 'laboratorio', 'labo'
 }
 
-# 3. Diccionario de Unificación (Corrección manual)
-# NOTA: Ya no es necesario incluir la versión sin tilde de la propia palabra clave.
-# El script ahora genera esa asociación automáticamente.
+
+# Diccionario de Unificación
 REPLACEMENTS = {
-# Raíz : [Variantes a reemplazar]. JIP: Si el concepto de fondo es el mismo, deberían agruparse. De otra forma pierde tamaño
-'acelerada': ['rapido', 'rapida', 'aceleracion', 'frenetica'],
-'aprendizaje': ['aprendizage', 'conocimiento'],
-'buena': ['bueno', 'buenas', 'buen','bien'],
-'cansadora': ['cansador'],
-'colaborativa':['grupal','equipo','colaboracion'],
-'confusa': ['confuso', 'confusas', 'confusos', 'confusion'],
-'desafiante': ['desafio'],
-'desincronizada': ['desarticulada',],
-'desorganizada': ['desorden', 'desorganizado', 'desorganizadas', 'caos','erratica'],
-'didáctica':['didactico'],
-'difícil': ['complejo', 'compleja', 'complicado', 'complicada'],
-'dinámica': ['dinamico','dinamicos', 'dinamismo', 'fluida'],
-'divertida': ['divertido', 'divertidas', 'divertidos'],
-'esclarecedora':['esclarecedor','clara','aclarador','entendible','escalrecedor','escalrecedora',
-                    'explicativo', 'ilustrativa','reveladora'],
-'entretenida': ['entretenido', 'entretenidas', 'entretenidos'],
-'enriquecedora':['enriquecera','enriquecedor'],
-'estresante': ['estrs','estres'],
-'exigente': ['estricta', 'intenso', 'esfuerzo', 'presion','laboriosa','laborioso'],
-'integradora': ['integrador'],
-'llevadera':['llevado','llevadero'],
-'útil': ['utiles'],
-'pesada':['pesado'],
-'práctica': ['practica', 'practicos','practico','practicidad', 'aplicativo'],
-'precisa': ['precision','preciso'],
-'organizado': ['organizacion', 'organizada', 'organizadas'],
-'técnica':['tecnica','tecnico'],
-'satisfactoria': ['recompensante'],
-'versátil': [] # JIP: Va vacía para que solo convierta "versatil" (sin acento)
+    # Raíz : [Variantes a reemplazar]
+    'acelerada': ['rapido', 'rapida', 'aceleracion', 'frenetica'],
+    'aprendizaje': ['aprendizage', 'conocimiento'],
+    'buena': ['bueno', 'buenas', 'buen','bien'],
+    'cansadora': ['cansador'],
+    'colaborativa':['grupal','equipo','colaboracion'],
+    'confusa': ['confuso', 'confusas', 'confusos', 'confusion'],
+    'desafiante': ['desafio'],
+    'desincronizada': ['desarticulada',],
+    'desorganizada': ['desorden', 'desorganizado', 'desorganizadas', 'caos','erratica'],
+    'didáctica':['didactico'],
+    'difícil': ['complejo', 'compleja', 'complicado', 'complicada'],
+    'dinámica': ['dinamico','dinamicos', 'dinamismo', 'fluida'],
+    'divertida': ['divertido', 'divertidas', 'divertidos'],
+    'esclarecedora':['esclarecedor','clara','aclarador','entendible','escalrecedor','escalrecedora',
+                        'explicativo', 'ilustrativa','reveladora'],
+    'entretenida': ['entretenido', 'entretenidas', 'entretenidos'],
+    'enriquecedora':['enriquecera','enriquecedor'],
+    'estresante': ['estrs','estres'],
+    'exigente': ['estricta', 'intenso', 'esfuerzo', 'presion','laboriosa','laborioso'],
+    'integradora': ['integrador'],
+    'llevadera':['llevado','llevadero'],
+    'útil': ['utiles'],
+    'pesada':['pesado'],
+    'práctica': ['practica', 'practicos','practico','practicidad', 'aplicativo'],
+    'precisa': ['precision','preciso'],
+    'organizado': ['organizacion', 'organizada', 'organizadas'],
+    'técnica':['tecnica','tecnico'],
+    'satisfactoria': ['recompensante'],
+    'versátil': [] 
 }
-
 
 
 def remove_accents(input_str):
@@ -271,7 +285,6 @@ def clean_text_for_wordcloud(text):
             lookup_map[v] = root # v ya viene sin tilde desde el diccionario
         
         # B. AUTO-MAPEO: Agregar la propia raíz sin tilde como variante que apunta a la raíz con tilde
-        # Esto soluciona tu punto: 'tecnica' -> 'técnica' automáticamente sin ensuciar el diccionario.
         root_clean = remove_accents(root)
         if root_clean != root:
             lookup_map[root_clean] = root
@@ -286,8 +299,6 @@ def clean_text_for_wordcloud(text):
         if w_clean in stopwords: continue
         
         # 3.2 Buscar reemplazo usando la versión limpia
-        # Si encuentra variante (ej: 'tecnica' generada en paso B) -> devuelve raíz ('técnica')
-        # Si no encuentra -> devuelve la palabra original (w) para preservar acentos de palabras fuera del diccionario
         final_word = lookup_map.get(w_clean, w)
         
         cleaned_words.append(final_word)
@@ -295,7 +306,6 @@ def clean_text_for_wordcloud(text):
     return " ".join(cleaned_words)
 
 
-# JIP: Versión que tiene en cuenta las negaciones
 def calcular_sentimiento(df_input, text_columns):
     """Calcula sentimiento detectando negaciones antes de adjetivos."""
     if not text_columns: return "Sin datos", "#808080"
@@ -424,13 +434,18 @@ if df is not None:
     st.sidebar.header("Filtros")
     if st.sidebar.button("🔄 Borrar Filtros", on_click=reset_filters, type="primary"): st.rerun()
 
+    sel_mat = st.sidebar.selectbox("Materia", ['Todas'] + sorted(df['Materia'].unique()), key='materia_filter')
     sel_lab = st.sidebar.selectbox("Laboratorio", ['Todos'] + sorted(df['Laboratorio'].unique()), key='lab_filter')
     sel_car = st.sidebar.selectbox("Carrera", ['Todas'] + sorted(df['Carrera'].unique()), key='car_filter')
     
-    all_docs = set()
-    if 'Docentes_List' in df.columns:
-        for l in df['Docentes_List']: all_docs.update(l)
-    sel_doc = st.sidebar.selectbox("Docente (Presente)", ['Todos'] + sorted(list(all_docs)), key='doc_filter')
+    # Lógica del Filtro de Docentes (Controlada por MOSTRAR_FILTRO_DOCENTES)
+    sel_doc = 'Todos' # Valor por defecto (Sin filtro)
+    
+    if MOSTRAR_FILTRO_DOCENTES:
+        all_docs = set()
+        if 'Docentes_List' in df.columns:
+            for l in df['Docentes_List']: all_docs.update(l)
+        sel_doc = st.sidebar.selectbox("Docente (Presente)", ['Todos'] + sorted(list(all_docs)), key='doc_filter')
 
     st.sidebar.markdown("---")
     st.sidebar.header("Visualización")
@@ -439,6 +454,7 @@ if df is not None:
 
     # --- APLICAR FILTROS ---
     df_f = df.copy()
+    if sel_mat != 'Todas': df_f = df_f[df_f['Materia'] == sel_mat]
     if sel_lab != 'Todos': df_f = df_f[df_f['Laboratorio'] == sel_lab]
     if sel_car != 'Todas': df_f = df_f[df_f['Carrera'] == sel_car]
     if sel_doc != 'Todos': df_f = df_f[df_f['Docentes_List'].apply(lambda x: sel_doc in x)]
@@ -449,8 +465,6 @@ if df is not None:
     c1, c2, c3 = st.columns(3)
     c1.metric("Encuestas", f"{filt} de {tot}", f"{pct:.1f}% muestra")
 
-    # sent_txt, sent_col = calcular_sentimiento(df_f, text_cols) # JIP: detección automática
-    # Ejemplo manual:
     text_cols_manual = ['Opinion_Mejoras', 'Palabras_Clave']
     sent_txt, sent_col = calcular_sentimiento(df_f, text_cols_manual)
 
@@ -571,7 +585,7 @@ if df is not None:
     cloud_col = 'Palabras_Clave'
     if cloud_col in df_f.columns:
         raw_txt = " ".join(df_f[cloud_col].dropna().astype(str))
-        txt_cloud = clean_text_for_wordcloud(raw_txt) # JIP: Limpieza
+        txt_cloud = clean_text_for_wordcloud(raw_txt) 
         if len(txt_cloud) > 10:
             st.markdown("#### Palabras Clave Globales")
             st.caption("Consigna: 'Escribí tres palabras que describan tu experiencia en el laboratorio'")
@@ -590,8 +604,6 @@ if df is not None:
     display_text_cols = [c for c in text_cols if c != 'Palabras_Clave']
     
     if display_text_cols:
-        # st.caption(f"Fuentes: {', '.join([c.replace('Opinion_', '') for c in display_text_cols])}")
-        
         # 1. Forzamos .copy() para romper el vínculo con el original y evitar errores de ordenamiento
         df_comments = df_f.dropna(subset=display_text_cols, how='all').copy()
         
@@ -606,7 +618,6 @@ if df is not None:
             
             elif sort_mode == "Longitud (Texto)":
                 # Calculamos longitud sumando todos los caracteres de las columnas de texto
-                # fillna("") convierte vacíos en texto vacío (largo 0) para no romper la suma
                 df_comments['largo_total'] = df_comments[display_text_cols].fillna("").astype(str).sum(axis=1).str.len()
                 
                 # Ordenamos usando esa columna nueva
