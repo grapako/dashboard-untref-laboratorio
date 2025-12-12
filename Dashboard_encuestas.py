@@ -14,6 +14,7 @@ import plotly.express as px
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import numpy as np
+import unicodedata
 
 # --- CONFIGURACIÓN DE DATOS POR DEFECTO ---
 LINK_OFICIAL_ENCUESTA = "https://docs.google.com/spreadsheets/d/1xiz_2A3bWK5vAd6MkCIC0dIXfiMcYqs3UpCQvRtZ1Mg/edit?usp=sharing" 
@@ -193,53 +194,103 @@ def extract_teachers_from_row(row_str, official_names, mapping_dict):
     return sorted(list(found))
 
 
+
+# 2. Lista de Stopwords (Palabras a ignorar, cargar sin acento)
+stopwords = {
+    'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',  'tenia', 'algun',
+    'y', 'e', 'ni', 'o', 'u', 'de', 'del', 'a', 'al', 'con', 'os', 'alumnos',
+    'sin', 'por', 'para', 'en', 'sobre', 'que', 'mi', 'tu', 'su',
+    'fue', 'muy', 'mas', 'más', 'pero', 'todo', 'laboratorio', 'labo'
+}
+
+# 3. Diccionario de Unificación (Corrección manual)
+# NOTA: Ya no es necesario incluir la versión sin tilde de la propia palabra clave.
+# El script ahora genera esa asociación automáticamente.
+REPLACEMENTS = {
+# Raíz : [Variantes a reemplazar]. JIP: Si el concepto de fondo es el mismo, deberían agruparse. De otra forma pierde tamaño
+'acelerada': ['rapido', 'rapida', 'aceleracion', 'frenetica'],
+'aprendizaje': ['aprendizage', 'conocimiento'],
+'buena': ['bueno', 'buenas', 'buen','bien'],
+'cansadora': ['cansador'],
+'colaborativa':['grupal','equipo','colaboracion'],
+'confusa': ['confuso', 'confusas', 'confusos', 'confusion'],
+'desafiante': ['desafio'],
+'desincronizada': ['desarticulada',],
+'desorganizada': ['desorden', 'desorganizado', 'desorganizadas', 'caos','erratica'],
+'didáctica':['didactico'],
+'difícil': ['complejo', 'compleja', 'complicado', 'complicada'],
+'dinámica': ['dinamico','dinamicos', 'dinamismo', 'fluida'],
+'divertida': ['divertido', 'divertidas', 'divertidos'],
+'esclarecedora':['esclarecedor','clara','aclarador','entendible','escalrecedor','escalrecedora',
+                    'explicativo', 'ilustrativa','reveladora'],
+'entretenida': ['entretenido', 'entretenidas', 'entretenidos'],
+'enriquecedora':['enriquecera','enriquecedor'],
+'estresante': ['estrs','estres'],
+'exigente': ['estricta', 'intenso', 'esfuerzo', 'presion','laboriosa','laborioso'],
+'integradora': ['integrador'],
+'llevadera':['llevado','llevadero'],
+'útil': ['utiles'],
+'pesada':['pesado'],
+'práctica': ['practica', 'practicos','practico','practicidad', 'aplicativo'],
+'precisa': ['precision','preciso'],
+'organizado': ['organizacion', 'organizada', 'organizadas'],
+'técnica':['tecnica','tecnico'],
+'satisfactoria': ['recompensante'],
+'versátil': [] # JIP: Va vacía para que solo convierta "versatil" (sin acento)
+}
+
+
+
+def remove_accents(input_str):
+    """Elimina tildes y normaliza caracteres (ej: á -> a, ñ -> n)"""
+    if not isinstance(input_str, str): return ""
+    nfkd_form = unicodedata.normalize('NFKD', input_str)
+    return "".join([c for c in nfkd_form if not unicodedata.combining(c)])
+
+
 def clean_text_for_wordcloud(text):
     """
-    Limpieza ligera específica para la nube de palabras de este laboratorio.
-    Normaliza género, elimina conectores y unifica términos comunes.
+    Limpieza ligera específica para la nube de palabras.
+    Normaliza: Minusculas -> Quita Puntuación -> Quita Acentos -> Diccionario -> Stopwords
     """
     if not isinstance(text, str): return ""
     
-    # 1. Minúsculas y limpieza básica
+    # 1. Minúsculas y limpieza básica de puntuación
     text = text.lower()
-    # Reemplazar puntuación por espacios
-    for char in [',', '.', '-', ';', '(', ')', '/']:
+    for char in [',', '.', '-', ';', '(', ')', '/', '!', '?', '"']:
         text = text.replace(char, ' ')
     
     words = text.split()
-    
-    # 2. Lista de Stopwords (Palabras a ignorar)
-    stopwords = {
-        'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',  'tenía', 
-        'y', 'e', 'ni', 'o', 'u', 'de', 'del', 'a', 'al', 'con', 
-        'sin', 'por', 'para', 'en', 'sobre', 'que', 'mi', 'tu', 'su',
-        'fue', 'muy', 'mas', 'más', 'pero', 'todo', 'laboratorio', 'labo'
-    }
-    
-    # 3. Diccionario de Unificación (Corrección manual ligera)
-    # Mapea: Variante -> Palabra Raíz
-    replacements = {
-        'divertida': 'divertido', 'divertidas': 'divertido',
-        'entretenida': 'entretenido', 'entretenidas': 'entretenido',
-        'cansadora': 'cansador',
-        'estresante': 'estresante', # estres es estresante
-        'confusa': 'confuso', 'confusas': 'confuso', 'confusion': 'confuso',
-        'buena': 'bueno', 'buenas': 'bueno',
-        'utiles': 'util', 'útil': 'util', 'útiles': 'util',
-        'prácticos': 'practico', 'práctica': 'practico', 'practica': 'practico',
-        'dinamica': 'dinamico', 'dinámica': 'dinamico',
-        'interesante': 'interesante', 'interesantes': 'interesante',
-        'exigente': 'exigente',
-        'organizacion': 'organizado', 'desorden': 'desorganizado',
-        'dificil': 'difícil'
-    }
-    
+
+    # 3. Preparar mapa de reemplazo plano (Variante sin tilde -> Raíz oficial)
+    # Se genera dinámicamente desde REPLACEMENTS para eficiencia
+    lookup_map = {}
+    for root, variants in REPLACEMENTS.items():
+        # A. Mapear variantes explícitas
+        for v in variants:
+            lookup_map[v] = root # v ya viene sin tilde desde el diccionario
+        
+        # B. AUTO-MAPEO: Agregar la propia raíz sin tilde como variante que apunta a la raíz con tilde
+        # Esto soluciona tu punto: 'tecnica' -> 'técnica' automáticamente sin ensuciar el diccionario.
+        root_clean = remove_accents(root)
+        if root_clean != root:
+            lookup_map[root_clean] = root
+        
     cleaned_words = []
     for w in words:
-        if w in stopwords or len(w) < 2: continue
-        # Aplicar reemplazo si existe, sino dejar la palabra original
-        w_clean = replacements.get(w, w)
-        cleaned_words.append(w_clean)
+        if len(w) < 2: continue
+        
+        # 3.1 Normalizar palabra actual (Quitar tilde para buscar en diccionario)
+        w_clean = remove_accents(w)
+        
+        if w_clean in stopwords: continue
+        
+        # 3.2 Buscar reemplazo usando la versión limpia
+        # Si encuentra variante (ej: 'tecnica' generada en paso B) -> devuelve raíz ('técnica')
+        # Si no encuentra -> devuelve la palabra original (w) para preservar acentos de palabras fuera del diccionario
+        final_word = lookup_map.get(w_clean, w)
+        
+        cleaned_words.append(final_word)
         
     return " ".join(cleaned_words)
 
@@ -523,7 +574,7 @@ if df is not None:
         txt_cloud = clean_text_for_wordcloud(raw_txt) # JIP: Limpieza
         if len(txt_cloud) > 10:
             st.markdown("#### Palabras Clave Globales")
-            st.caption("Fuente: Pregunta 'Escribí tres palabras...'")
+            st.caption("Consigna: 'Escribí tres palabras que describan tu experiencia en el laboratorio'")
             wc = WordCloud(width=1200, height=400, background_color='white', colormap='viridis', regexp=r"\w+", random_state=42).generate(txt_cloud)
             fig, ax = plt.subplots(figsize=(12, 4))
             ax.imshow(wc); ax.axis("off")
