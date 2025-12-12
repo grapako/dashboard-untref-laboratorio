@@ -598,7 +598,7 @@ if df is not None:
     st.divider()
 
     # Opiniones en 3 Columnas Dinámicas
-    st.markdown("#### Últimas Opiniones")
+    st.markdown("#### Opiniones")
     
     # Identificar columnas de texto que NO son palabras clave
     display_text_cols = [c for c in text_cols if c != 'Palabras_Clave']
