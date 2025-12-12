@@ -412,8 +412,8 @@ if df is not None:
     st.divider()
 
     # --- 1. RESUMEN GENERAL ---
-    st.markdown("### 📈 Resumen General y Comparativa")
-    st.markdown("Promedios de satisfacción (escala 1 a 5) y comparación global entre carreras.")
+    st.markdown("### 📈 Resultado General y Comparativa")
+    st.markdown("Promedios de satisfacción toal (escala 1 a 5).")
     if rating_cols:
         avgs = df_f[rating_cols].mean()
         for i in range(0, len(rating_cols), 4):
@@ -439,7 +439,7 @@ if df is not None:
         st.write("") 
         
         # Comparativa Global por Carrera
-        st.markdown("#### 🆚 Comparativa Global por Carrera")
+        st.markdown("#### 🆚 Desglose Global por Carrera")
         df_f['Score_Global'] = df_f[rating_cols].mean(axis=1)
         career_global = df_f.groupby('Carrera')['Score_Global'].agg(['mean', 'count']).reset_index().sort_values('mean', ascending=True)
         
@@ -463,7 +463,7 @@ if df is not None:
     st.divider()
 
     # --- 2. DETALLE POR PREGUNTA ---
-    st.markdown("### 📝 Análisis Detallado por Pregunta")
+    st.markdown("### 📝 Resultado Detallado por Pregunta")
     
     for col in rating_cols:
         title = REVERSE_MAP.get(col, col)
