@@ -338,7 +338,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-st.title("📊 Resultados Encuesta del laboratorio de Física")
+st.title("📊 Resultados de la Encuesta del Laboratorio de Física")
 
 opciones_fuente = ["📊 Datos Oficiales (Cargados)", "🔗 Pegar Link de Google Sheet", "📂 Subir Archivo (.xlsx / .csv)"]
 src = st.radio("Fuente de Datos:", opciones_fuente, horizontal=True, index=0)
