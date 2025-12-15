@@ -77,15 +77,38 @@ PREGUNTA_MAP = {
 
 REVERSE_MAP = {v: k for k, v in PREGUNTA_MAP.items()}
 
+
 EXPLICACIONES_CARRERA = {
-    'Calif_Guias': "Evalúa la accesibilidad y claridad del material escrito.",
-    'Calif_Videos': "Mide la utilidad percibida del material audiovisual de apoyo.",
-    'Calif_Coord_Teoria': "Analiza la sincronización percibida entre teoría y práctica.",
-    'Calif_Docentes_Expl': "Cuantifica la claridad expositiva del equipo docente.",
-    'Calif_Correcciones': "Mide la valoración del feedback recibido en los informes.",
-    'Calif_Impacto_Aprendizaje': "Indicador de relevancia académica y comprensión profunda.",
+    'Calif_Guias': 
+        "Indica si las guías permiten la autonomía del estudiante o si representan una dificultad que requiere gran intervención docente para interpretar la consigna.",
+    
+    'Calif_Videos': 
+        "Un valor alto sugiere que el material asincrónico libera tiempo de clase presencial resolviendo dudas previamente.",
+    
+    'Calif_Coord_Teoria': 
+        "Percepción de sincronía entre teoría y práctica. Valores bajos indican que el alumno asiste sin el marco conceptual necesario.",
+    
+    'Calif_Docentes_Expl': 
+        "Percepción sobre la capacidad del equipo docente para transmitir conceptos complejos y resolver dudas en clase.",
+    
+    'Calif_Correcciones': 
+        "¿El alumno utiliza la corrección para mejorar el siguiente trabajo, o la percibe solo como una penalización?",
+    
+    'Calif_Impacto_Aprendizaje': 
+        "Percepción de si el Laboratorio cumple su función de consolidar los conceptos teóricos, o se percibe como una materia aislada."
 }
+
+
 EXPLICACION_DEFAULT = "Promedio de satisfacción desagregado por carrera."
+
+REFERENCIAS_ESCALA = {
+    'Calif_Guias': ('Muy difíciles', 'Muy claras'),
+    'Calif_Videos': ('Nada útiles', 'Excelentes'),
+    'Calif_Coord_Teoria': ('Los temas no habían sido vistos en las clases teóricas', 'Todos los temas fueron vistos en las clases teóricas'),
+    'Calif_Docentes_Expl': ('Nunca se entendía nada', 'Eran siempre claras'),
+    'Calif_Correcciones': ('No servían para nada', 'Fueron muy útiles'),
+    'Calif_Impacto_Aprendizaje': ('Para nada', 'Absolutamente')
+}
 
 # --- FUNCIONES DE CARGA Y PROCESAMIENTO ---
 
@@ -215,8 +238,8 @@ def extract_teachers_from_row(row_str, official_names, mapping_dict):
 stopwords = {
     'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',  'tenia', 'algun',
     'y', 'e', 'ni', 'o', 'u', 'de', 'del', 'a', 'al', 'con', 'os', 'alumnos',
-    'sin', 'por', 'para', 'en', 'sobre', 'que', 'mi', 'tu', 'su',
-    'fue', 'muy', 'mas', 'pero', 'todo', 'laboratorio', 'labo'
+    'sin', 'por', 'para', 'en', 'sobre', 'que', 'mi', 'tu', 'su', 'parte',
+    'fue', 'muy', 'mas', 'pero', 'todo', 'laboratorio', 'labo', 'año', 'profesores'
 }
 
 
@@ -534,27 +557,54 @@ if df is not None:
         title = REVERSE_MAP.get(col, col)
         st.subheader(f"📌 {title}")
         
+        # --- A. Contexto Pedagógico (Movido al inicio) ---
+        exp = EXPLICACIONES_CARRERA.get(col, EXPLICACION_DEFAULT)
+        st.info(f"💡 {exp}")
+
+        # --- B. Referencias de Escala (Debajo de la explicación) ---
+        if col in REFERENCIAS_ESCALA:
+            min_txt, max_txt = REFERENCIAS_ESCALA[col]
+            st.markdown(f"""
+            <div style="font-size: 0.9em; color: #555; margin-bottom: 20px; margin-top: -10px;">
+                <b>Extremos:</b> <span style="color: #d9534f; font-weight: bold;">1</span>: {min_txt} &nbsp;&nbsp;⟶&nbsp;&nbsp;
+                <span style="color: #28a745; font-weight: bold;">5</span>: {max_txt}
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # --- C. Gráficos ---
         c_left, c_right = st.columns([1, 1])
         
         with c_left:
-            cnt = df_f[col].value_counts().reindex(sorted(df_f[col].unique()), fill_value=0).reset_index()
+            # Gráfico Izquierdo: Distribución General (Eje fijo 1-5)
+            cnt = df_f[col].value_counts().reindex([1, 2, 3, 4, 5], fill_value=0).reset_index()
             cnt.columns = ['Puntaje', 'Valor']
             
             y_val = 'Valor'
             if is_pct:
                 tot_v = cnt['Valor'].sum()
-                cnt['Pct'] = (cnt['Valor']/tot_v*100).fillna(0)
+                cnt['Pct'] = (cnt['Valor']/tot_v*100).fillna(0) if tot_v > 0 else 0
                 y_val = 'Pct'; y_title = "%"; y_max = 115; txt_t = '%{y:.1f}%'
             else:
-                y_title = "Votos"; y_max = cnt['Valor'].max() * 1.2; txt_t = '%{y}'
+                y_title = "Votos"; y_max = (cnt['Valor'].max() * 1.2) if cnt['Valor'].max() > 0 else 10; txt_t = '%{y}'
             
             fig1 = px.bar(cnt, x='Puntaje', y=y_val, text=y_val, title=f"Distribución ({y_title})",
                           color=y_val, color_continuous_scale='Blues')
+            
             fig1.update_traces(texttemplate=txt_t, textposition='outside')
-            fig1.update_layout(yaxis=dict(range=[0, y_max], title=y_title), height=350)
+            
+            fig1.update_layout(
+                yaxis=dict(range=[0, y_max], title=y_title),
+                xaxis=dict(
+                    title="Puntaje",
+                    tickmode='array',
+                    tickvals=[1, 2, 3, 4, 5] 
+                ),
+                height=350
+            )
             st.plotly_chart(fig1, use_container_width=True, key=f"dist_{col}")
 
         with c_right:
+            # Gráfico Derecho: Desglose por Carrera
             cg = df_f.groupby('Carrera')[col].agg(['mean', 'count']).reset_index().sort_values('mean', ascending=True)
             
             if is_pct:
@@ -572,9 +622,6 @@ if df is not None:
             fig2.update_traces(texttemplate='%{text:'+fmt+'}'+suf, textposition='outside')
             fig2.update_layout(xaxis=dict(range=x_rng), yaxis_title=None, height=350)
             st.plotly_chart(fig2, use_container_width=True, key=f"comp_{col}")
-            
-            exp = EXPLICACIONES_CARRERA.get(col, EXPLICACION_DEFAULT)
-            st.info(f"💡 {exp}")
             
         st.divider()
 
