@@ -177,6 +177,10 @@ def load_data(file_or_url, is_url=False):
             if c not in df.columns: df[c] = 'Sin Especificar'
             else: df[c] = df[c].fillna('Sin Especificar').astype(str)
 
+        # Quitar "Laboratorio de" para limpiar los nombres
+        if 'Laboratorio' in df.columns:
+            df['Laboratorio'] = df['Laboratorio'].str.replace('Laboratorio de ', '', regex=False).str.strip()
+
         return df
     except Exception as e:
         if is_url and not file_or_url: return None
@@ -544,7 +548,7 @@ if df is not None:
         
         fig_global = px.bar(career_global, y='Label', x=x_ax, text=x_ax, orientation='h', 
                             color=x_ax, color_continuous_scale='Teal')
-        fig_global.update_traces(texttemplate='%{text:' + txt_fmt + '}' + txt_suf, textposition='outside')
+        fig_global.update_traces(texttemplate='%{text:' + txt_fmt + '}' + txt_suf, textposition='outside', hoverinfo='skip', hovertemplate=None)
         fig_global.update_layout(xaxis=dict(range=range_x, title=x_title), yaxis_title=None, height=400)
         st.plotly_chart(fig_global, use_container_width=True, key="global_chart")
 
