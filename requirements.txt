@@ -4,3 +4,4 @@ numpy
 altair>=5.0.0
 plotly
 watchdog
+wordcloud
