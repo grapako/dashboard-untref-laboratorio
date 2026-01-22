@@ -3,7 +3,7 @@ title: Dashboard Untref Laboratorio
 emoji: 📊
 colorFrom: blue
 colorTo: green
-sdk: docker
+sdk: streamlit
 sdk_version: 1.31.0
 app_file: Dashboard_encuestas.py
 app_port: 7860
