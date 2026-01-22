@@ -27,17 +27,25 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- INICIO DEL PARCHE PARA HUGGING FACE ---
-# Esto arregla el parpadeo del ancho y mejora el scroll
+# --- INICIO DEL PARCHE CSS (VERSIÓN CAMUFLADA) ---
 st.markdown("""
     <style>
-        /* Fuerza la barra de scroll vertical siempre, evitando el recálculo continuo */
+        /* 1. Arregla el parpadeo (mantiene la barra de scroll vertical siempre) */
         .main {
             overflow-y: scroll;
         }
-        /* Opcional: Ocultar el menú hamburguesa y footer si quieres más limpieza */
-        #MainMenu {visibility: hidden;}
-        footer {visibility: hidden;}
+        
+        /* 2. Oculta la línea de decoración superior (arcoíris/roja-amarilla) */
+        div[data-testid="stDecoration"] {
+            visibility: hidden;
+            height: 0px;
+            display: none;
+        }
+
+        /* 3. (Opcional) Reduce el margen superior para que el título suba un poco */
+        .block-container {
+            padding-top: 2rem; 
+        }
     </style>
 """, unsafe_allow_html=True)
 # --- FIN DEL PARCHE ---
@@ -753,3 +761,4 @@ st.markdown(f"""
 </div>
 
 """, unsafe_allow_html=True)
+
