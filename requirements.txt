@@ -1,8 +1,9 @@
-streamlit>=1.31.0
-pandas>=2.0.0
-plotly
+streamlit==1.32.0
+pandas>=2.1.0
+plotly>=5.19.0
 wordcloud
 matplotlib
 openpyxl
-altair>=5.0.0
-numpy
+altair>=5.2.0
+numpy>=1.26.0
+watchdog
