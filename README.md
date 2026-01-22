@@ -1,3 +1,14 @@
+---
+title: Dashboard Untref Laboratorio
+emoji: 📊
+colorFrom: blue
+colorTo: green
+sdk: streamlit
+sdk_version: 1.31.0
+app_file: app.py
+pinned: false
+---
+
 # 📊 Resultados de las encuestas del Laboratorio de Física (UNTREF)
 
 Este repositorio contiene el código fuente de una aplicación web interactiva desarrollada para analizar las encuestas de satisfacción de los estudiantes del Laboratorio de Física.
