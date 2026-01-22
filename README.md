@@ -5,7 +5,7 @@ colorFrom: blue
 colorTo: green
 sdk: streamlit
 sdk_version: 1.31.0
-app_file: app.py
+app_file: Dashboard_encuestas.py
 pinned: false
 ---
 
