@@ -9,6 +9,8 @@ app_file: Dashboard_encuestas.py
 pinned: false
 ---
 
+![Vistas](https://visitor-badge.laobi.icu/badge?page_id=grapako.dashboard-untref-laboratorio)
+
 # 📊 Resultados de las encuestas del Laboratorio de Física (UNTREF)
 
 Este repositorio contiene el código fuente de una aplicación web interactiva desarrollada para analizar las encuestas de satisfacción de los estudiantes del Laboratorio de Física.
