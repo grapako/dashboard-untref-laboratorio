@@ -27,6 +27,21 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- INICIO DEL PARCHE PARA HUGGING FACE ---
+# Esto arregla el parpadeo del ancho y mejora el scroll
+st.markdown("""
+    <style>
+        /* Fuerza la barra de scroll vertical siempre, evitando el recálculo continuo */
+        .main {
+            overflow-y: scroll;
+        }
+        /* Opcional: Ocultar el menú hamburguesa y footer si quieres más limpieza */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+    </style>
+""", unsafe_allow_html=True)
+# --- FIN DEL PARCHE ---
+
 # --- GESTIÓN DE ESTADO ---
 if 'materia_filter' not in st.session_state: st.session_state.materia_filter = 'Todas'
 if 'lab_filter' not in st.session_state: st.session_state.lab_filter = 'Todos'
@@ -736,4 +751,5 @@ st.markdown(f"""
         <a href="https://www.linkedin.com/in/juaniperalta/" style="color: grey; text-decoration: none;">🔗 LinkedIn</a>
     </p>
 </div>
+
 """, unsafe_allow_html=True)
