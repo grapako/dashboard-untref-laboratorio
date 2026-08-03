@@ -17,7 +17,8 @@ import numpy as np
 import unicodedata
 
 # --- CONFIGURACIÓN DE DATOS POR DEFECTO ---
-LINK_OFICIAL_ENCUESTA = "https://docs.google.com/spreadsheets/d/1xiz_2A3bWK5vAd6MkCIC0dIXfiMcYqs3UpCQvRtZ1Mg/edit?usp=sharing" 
+# LINK_OFICIAL_ENCUESTA = "https://docs.google.com/spreadsheets/d/1xiz_2A3bWK5vAd6MkCIC0dIXfiMcYqs3UpCQvRtZ1Mg/edit?usp=sharing" # JIP: 2025B
+LINK_OFICIAL_ENCUESTA = "https://docs.google.com/spreadsheets/d/14wzNg71_McoDbpw-yVrYBXQlB9NMuH1W_ATytBw4cJI/edit?usp=sharing" # JIP: 2026A
 MOSTRAR_FILTRO_DOCENTES = False 
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
