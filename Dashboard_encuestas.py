@@ -546,8 +546,12 @@ if df is not None:
                         'Calif_Correcciones': 'Valor de las Correcciones',
                         'Calif_Impacto_Aprendizaje': 'Impacto en el Aprendizaje'
                     }
-                    # Usa el nombre bonito si existe, sino usa el original limpio
-                    lbl = nombres_kpi.get(col, col.replace('Calif_', '').replace('_', ' '))
+                    # Usa el nombre bonito si existe, sino usa el original limpio.
+                    # Se fuerza a str para evitar errores de tipado y de None en ejecución.
+                    lbl = nombres_kpi.get(col)
+                    if lbl is None:
+                        lbl = col.replace('Calif_', '').replace('_', ' ')
+                    lbl = str(lbl)
                     
                     d_val = f"{(val/5)*100:.0f}%" if is_pct else f"{val:.2f}"
                     st.metric(lbl, d_val)
@@ -707,7 +711,8 @@ if df is not None:
             cols_header = st.columns(len(display_text_cols))
             
             for i, col_name in enumerate(display_text_cols):
-                header = REVERSE_MAP.get(col_name, col_name).replace('Opinion_', '').replace('_', ' ').title()
+                raw_header = REVERSE_MAP.get(col_name) or col_name
+                header = str(raw_header).replace('Opinion_', '').replace('_', ' ').title()
                 # Encabezado en negrita y color primario para destacar
                 cols_header[i].markdown(f"**:blue[{header}]**")
             
