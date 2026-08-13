@@ -3,7 +3,8 @@
  * no se suben archivos ni respuestas a un servidor.
  */
 
-const OFFICIAL_SHEET_URL = "https://docs.google.com/spreadsheets/d/1xiz_2A3bWK5vAd6MkCIC0dIXfiMcYqs3UpCQvRtZ1Mg/edit?usp=sharing";
+// const OFFICIAL_SHEET_URL = "https://docs.google.com/spreadsheets/d/1xiz_2A3bWK5vAd6MkCIC0dIXfiMcYqs3UpCQvRtZ1Mg/edit?usp=sharing";
+const OFFICIAL_SHEET_URL = "https://docs.google.com/spreadsheets/d/14wzNg71_McoDbpw-yVrYBXQlB9NMuH1W_ATytBw4cJI/edit?usp=sharing"
 const SHOW_TEACHER_FILTER = false;
 
 const QUESTION_MAP = {
