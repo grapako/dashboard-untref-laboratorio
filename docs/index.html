@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Resultados de la Encuesta del Laboratorio de Física - UNTREF" />
+    <title>Encuesta del Laboratorio de Física | UNTREF</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <main class="page-shell">
+      <header class="institutional-header">
+        <div class="untref-mark">UNTREF</div>
+        <div class="institutional-copy">
+          <div>Universidad Nacional de Tres de Febrero</div>
+          <small>Departamento de Ciencia y Tecnología | Laboratorio de Física</small>
+        </div>
+      </header>
+      <div id="app" aria-live="polite">
+        <div class="loading-card">Cargando el tablero…</div>
+      </div>
+      <footer>
+        <p>Desarrollado por: <strong>J. I. Peralta</strong> | Actualizado como sitio estático</p>
+        <p><a href="mailto:jperalta@untref.edu.ar">📧 jperalta@untref.edu.ar</a> · <a href="https://www.linkedin.com/in/juaniperalta/" target="_blank" rel="noreferrer">🔗 LinkedIn</a></p>
+      </footer>
+    </main>
+  </body>
+</html>
