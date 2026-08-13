@@ -1,8 +1,8 @@
 """
 Dashboard de Análisis de Encuestas - Laboratorio de Física
 ---------------------------------------------------------
-Autores: J. I. Peralta & Gemini Pro 3.0
-Fecha: 05/12/2025
+Autores: J. I. Peralta & 🤖 LLMs
+Última edición: 13/08/2026
 
 Descripción:
 Aplicación web interactiva desarrollada con Streamlit para el análisis de encuestas
@@ -52,16 +52,14 @@ st.markdown("""
 # --- FIN DEL PARCHE ---
 
 # --- GESTIÓN DE ESTADO ---
-if 'materia_filter' not in st.session_state: st.session_state.materia_filter = 'Todas'
-if 'lab_filter' not in st.session_state: st.session_state.lab_filter = 'Todos'
-if 'car_filter' not in st.session_state: st.session_state.car_filter = 'Todas'
-if 'doc_filter' not in st.session_state: st.session_state.doc_filter = 'Todos'
+INITIAL_FILTERS = {'materia_filter': 'Todas', 'lab_filter': 'Todos', 'car_filter': 'Todas', 'doc_filter': 'Todos'}
+for key, value in INITIAL_FILTERS.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 def reset_filters():
-    st.session_state.materia_filter = 'Todas'
-    st.session_state.lab_filter = 'Todos'
-    st.session_state.car_filter = 'Todas'
-    st.session_state.doc_filter = 'Todos'
+    for key, value in INITIAL_FILTERS.items():
+        st.session_state[key] = value
 
 # --- LISTAS Y DICCIONARIOS DE CONFIGURACIÓN ---
 
@@ -322,8 +320,7 @@ def clean_text_for_wordcloud(text):
     
     # 1. Minúsculas y limpieza básica de puntuación
     text = text.lower()
-    for char in [',', '.', '-', ';', '(', ')', '/', '!', '?', '"']:
-        text = text.replace(char, ' ')
+    text = re.sub(r'[,.\-;()/!?"]+', ' ', text)
     
     words = text.split()
 
@@ -377,15 +374,13 @@ def calcular_sentimiento(df_input, text_columns):
         # Unir y limpiar
         full_text = " ".join([str(row[c]) for c in text_columns if c in row and pd.notna(row[c])]).lower()
         # Quitar puntuación básica para tokenizar bien
-        for char in ['.', ',', ';', '!', '?']: full_text = full_text.replace(char, ' ')
+        full_text = re.sub(r'[.,;!?]+', ' ', full_text)
         
         words = full_text.split()
         row_score = 0
         
         for i, w in enumerate(words):
-            val = 0
-            if w in pos: val = 1
-            elif w in neg: val = -1
+            val = 1 if w in pos else (-1 if w in neg else 0)
             
             # Chequear negación en la palabra anterior (ventana de 1)
             if val != 0 and i > 0 and words[i-1] in negators:
@@ -505,10 +500,15 @@ if df is not None:
 
     # --- APLICAR FILTROS ---
     df_f = df.copy()
-    if sel_mat != 'Todas': df_f = df_f[df_f['Materia'] == sel_mat]
-    if sel_lab != 'Todos': df_f = df_f[df_f['Laboratorio'] == sel_lab]
-    if sel_car != 'Todas': df_f = df_f[df_f['Carrera'] == sel_car]
-    if sel_doc != 'Todos': df_f = df_f[df_f['Docentes_List'].apply(lambda x: sel_doc in x)]
+    filter_conditions = [
+        (sel_mat != 'Todas', df_f['Materia'] == sel_mat),
+        (sel_lab != 'Todos', df_f['Laboratorio'] == sel_lab),
+        (sel_car != 'Todas', df_f['Carrera'] == sel_car),
+        (sel_doc != 'Todos', df_f['Docentes_List'].apply(lambda x: sel_doc in x))
+    ]
+    for condition, mask in filter_conditions:
+        if condition:
+            df_f = df_f[mask]
 
     # --- KPI & SENTIMIENTO ---
     tot, filt = len(df), len(df_f)
@@ -529,12 +529,12 @@ if df is not None:
 
     # --- 1. RESUMEN GENERAL ---
     st.markdown("### 📈 Resultado General y Comparativa")
-    st.markdown("Promedios de satisfacción toal (escala 1 a 5).")
+    st.markdown("Promedios de satisfacción total (escala 1 a 5).")
     if rating_cols:
         avgs = df_f[rating_cols].mean()
-        for i in range(0, len(rating_cols), 4):
-            cols_kpi = st.columns(4)
-            for j, col in enumerate(rating_cols[i:i+4]):
+        for i in range(0, len(rating_cols), 2):
+            cols_kpi = st.columns(2)
+            for j, col in enumerate(rating_cols[i:i+2]):
                 with cols_kpi[j]:
                     val = avgs[col]
 
@@ -662,13 +662,15 @@ if df is not None:
     
     # Nube (Exclusiva de Palabras Clave)
     cloud_col = 'Palabras_Clave'
+    COLORMAPS = {'Pastel': 'Pastel1', 'Viridis': 'viridis', 'Tropical': 'twilight'}
     if cloud_col in df_f.columns:
         raw_txt = " ".join(df_f[cloud_col].dropna().astype(str))
         txt_cloud = clean_text_for_wordcloud(raw_txt) 
         if len(txt_cloud) > 10:
             st.markdown("#### Palabras Clave Globales")
             st.caption("Consigna: 'Escribí tres palabras que describan tu experiencia en el laboratorio'")
-            wc = WordCloud(width=1200, height=400, background_color='white', colormap='viridis', regexp=r"\w+", random_state=42).generate(txt_cloud)
+            palette_choice = st.selectbox("Colores", list(COLORMAPS.keys()), index=0)
+            wc = WordCloud(width=1200, height=400, background_color='white', colormap=COLORMAPS[palette_choice], regexp=r"\w+", random_state=42).generate(txt_cloud)
             fig, ax = plt.subplots(figsize=(12, 4))
             ax.imshow(wc); ax.axis("off")
             plt.close(fig)
@@ -757,14 +759,13 @@ elif src == "🔗 Pegar Link de Google Sheet":
     st.info("Pega el link arriba.")
 
 st.markdown("---")
-st.markdown(f"""
+st.markdown("""
 <div style="text-align: center; color: grey; padding-top: 20px;">
-    <p>Desarrollado por: <b>J. I. Peralta</b> & <b>Gemini Pro 3.0</b> | Fecha: 12/12/2025</p>
+    <p>Desarrollado por: <b>J. I. Peralta</b> & <b>🤖 LLMs</b> | Última edición: 13/08/2026</p>
     <p>
-        <a href="mailto:jperalta@untref.edu.ar" style="color: grey; text-decoration: none;">📧 jperalta@untref.edu.ar</a> | 
+        <a href="mailto:jperalta@untref.edu.ar" style="color: grey; text-decoration: none;">📧 jperalta@untref.edu.ar</a> · 
         <a href="https://www.linkedin.com/in/juaniperalta/" style="color: grey; text-decoration: none;">🔗 LinkedIn</a>
     </p>
 </div>
-
 """, unsafe_allow_html=True)
 
