@@ -3,7 +3,8 @@
  * no se suben archivos ni respuestas a un servidor.
  */
 
-const OFFICIAL_SHEET_URL = "https://docs.google.com/spreadsheets/d/1xiz_2A3bWK5vAd6MkCIC0dIXfiMcYqs3UpCQvRtZ1Mg/edit?usp=sharing";
+// const OFFICIAL_SHEET_URL = "https://docs.google.com/spreadsheets/d/1xiz_2A3bWK5vAd6MkCIC0dIXfiMcYqs3UpCQvRtZ1Mg/edit?usp=sharing";
+const OFFICIAL_SHEET_URL = "https://docs.google.com/spreadsheets/d/14wzNg71_McoDbpw-yVrYBXQlB9NMuH1W_ATytBw4cJI/edit?usp=sharing"
 const SHOW_TEACHER_FILTER = false;
 
 const QUESTION_MAP = {
@@ -70,6 +71,19 @@ const REPLACEMENTS = {
   acelerada: ["rapido", "rapida", "aceleracion", "frenetica"], aprendizaje: ["aprendizage", "conocimiento"], buena: ["bueno", "buenas", "buen", "bien"], cansadora: ["cansador"], colaborativa: ["grupal", "equipo", "colaboracion"], confusa: ["confuso", "confusas", "confusos", "confusion"], desafiante: ["desafio"], desincronizada: ["desarticulada"], desorganizada: ["desorden", "desorganizado", "desorganizadas", "caos", "erratica"], "didáctica": ["didactico"], "difícil": ["complejo", "compleja", "complicado", "complicada"], "dinámica": ["dinamico", "dinamicos", "dinamismo", "fluida"], divertida: ["divertido", "divertidas", "divertidos"], esclarecedora: ["esclarecedor", "clara", "aclarador", "entendible", "escalrecedor", "escalrecedora", "explicativo", "ilustrativa", "reveladora"], entretenida: ["entretenido", "entretenidas", "entretenidos"], enriquecedora: ["enriquecera", "enriquecedor"], estresante: ["estrs", "estres"], exigente: ["estricta", "intenso", "esfuerzo", "presion", "laboriosa", "laborioso"], integradora: ["integrador"], llevadera: ["llevado", "llevadero"], "útil": ["utiles"], pesada: ["pesado"], "práctica": ["practica", "practicos", "practico", "practicidad", "aplicativo"], precisa: ["precision", "preciso"], organizado: ["organizacion", "organizada", "organizadas"], "técnica": ["tecnica", "tecnico"], satisfactoria: ["recompensante"], "versátil": []
 };
 
+const readPreference = (key, fallback) => {
+  try { return localStorage.getItem(key) || fallback; }
+  catch { return fallback; }
+};
+const savePreference = (key, value) => {
+  try { localStorage.setItem(key, value); }
+  catch { /* El tablero sigue funcionando aunque el navegador bloquee el almacenamiento local. */ }
+};
+const WORD_CLOUD_PALETTES = {
+  Pastel: ["#7c3aed", "#a21caf", "#be185d", "#c2410c", "#a16207", "#4d7c0f", "#15803d", "#0f766e", "#0369a1", "#4338ca"],
+  Viridis: ["#440154", "#482878", "#3e4989", "#31688e", "#26828e", "#1f9e89", "#35b779", "#6ece58", "#b5de2b", "#d4e21a"],
+  Tropical: ["#e63946", "#f77f00", "#fcbf49", "#06a77d", "#118ab2", "#073b4c", "#d62828", "#f77f00", "#fcbf49", "#06a77d"]
+};
 const state = {
   source: "official",
   data: null,
@@ -81,10 +95,20 @@ const state = {
   filters: { materia: "Todas", laboratorio: "Todos", carrera: "Todas", docente: "Todos" },
   isPercentage: true,
   commentSort: "Últimos",
-  commentLimit: "Todos"
+  commentLimit: "Todos",
+  sidebarOpen: readPreference("untref-sidebar-open", "true") !== "false",
+  themeMode: readPreference("untref-theme-mode", "system"),
+  cloudPalette: readPreference("untref-cloud-palette", "Pastel")
 };
 
 const app = document.querySelector("#app");
+const isDarkTheme = () => state.themeMode === "dark" || (state.themeMode === "system" && window.matchMedia?.("(prefers-color-scheme: dark)").matches);
+const applyTheme = () => {
+  const root = document.documentElement;
+  if (!root) return;
+  if (state.themeMode === "system") delete root.dataset.theme;
+  else root.dataset.theme = state.themeMode;
+};
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
 const isBlank = (value) => value === null || value === undefined || String(value).trim() === "";
 const asText = (value) => value instanceof Date ? value.toLocaleString("es-AR") : String(value ?? "");
@@ -301,10 +325,9 @@ function selectOptions(options, selected) {
 
 function sourceMarkup() {
   const radio = (value, label) => `<label class="source-option"><input type="radio" name="source" value="${value}" ${state.source === value ? "checked" : ""}>${label}</label>`;
-  let detail = "";
-  if (state.source === "official") detail = `<div class="source-detail"><small>Se cargan los datos oficiales desde la planilla configurada.</small></div>`;
-  if (state.source === "link") detail = `<div class="source-detail"><div class="inline-form"><input id="sheet-url" type="text" placeholder="Pegá un enlace público de Google Sheets o un CSV" aria-label="Enlace público"><button id="load-url">Cargar datos</button></div><small>La planilla debe ser pública. Si el proveedor bloquea el acceso desde el navegador, descargala y subila como archivo.</small></div>`;
-  if (state.source === "file") detail = `<div class="source-detail"><input id="file-input" type="file" accept=".csv,.xlsx"><small>El archivo se procesa localmente en tu navegador: no se envía a ningún servidor.</small></div>`;
+  const detail = state.source === "official" ? `<div class="source-detail"><small>Se cargan los datos oficiales desde la planilla configurada.</small></div>` :
+                 state.source === "link" ? `<div class="source-detail"><div class="inline-form"><input id="sheet-url" type="text" placeholder="Pegá un enlace público de Google Sheets o un CSV" aria-label="Enlace público"><button id="load-url">Cargar datos</button></div><small>La planilla debe ser pública. Si el proveedor bloquea el acceso desde el navegador, descargala y subila como archivo.</small></div>` :
+                 state.source === "file" ? `<div class="source-detail"><input id="file-input" type="file" accept=".csv,.xlsx"><small>El archivo se procesa localmente en tu navegador: no se envía a ningún servidor.</small></div>` : "";
   return `<section class="source-panel"><p>Fuente de datos</p><div class="source-options">${radio("official", "📊 Datos oficiales cargados")}${radio("link", "🔗 Pegar enlace de Google Sheet")}${radio("file", "📂 Subir archivo (.xlsx / .csv)")}</div>${detail}</section>`;
 }
 
@@ -312,12 +335,8 @@ function filterMarkup() {
   const materialOptions = ["Todas", ...uniqueSorted(state.data.map((row) => row.Materia))];
   const laboratoryOptions = ["Todos", ...uniqueSorted(state.data.map((row) => row.Laboratorio))];
   const careerOptions = ["Todas", ...uniqueSorted(state.data.map((row) => row.Carrera))];
-  let teacher = "";
-  if (SHOW_TEACHER_FILTER) {
-    const options = ["Todos", ...uniqueSorted(state.data.flatMap((row) => row.Docentes_List))];
-    teacher = `<label>Docente presente<select id="filter-docente">${selectOptions(options, state.filters.docente)}</select></label>`;
-  }
-  return `<section class="filters-panel"><div class="filter-grid"><label>Materia<select id="filter-materia">${selectOptions(materialOptions, state.filters.materia)}</select></label><label>Laboratorio<select id="filter-laboratorio">${selectOptions(laboratoryOptions, state.filters.laboratorio)}</select></label><label>Carrera<select id="filter-carrera">${selectOptions(careerOptions, state.filters.carrera)}</select></label>${teacher}<div class="viz-control"><span>Visualización</span><div class="control-options"><label class="radio-option"><input type="radio" name="unit" value="percentage" ${state.isPercentage ? "checked" : ""}>Porcentaje (%)</label><label class="radio-option"><input type="radio" name="unit" value="absolute" ${!state.isPercentage ? "checked" : ""}>Cantidad absoluta / escala</label></div></div></div><button id="reset-filters" class="secondary">🔄 Borrar filtros</button></section>`;
+  const teacher = SHOW_TEACHER_FILTER ? `<label>Docente presente<select id="filter-docente">${selectOptions(["Todos", ...uniqueSorted(state.data.flatMap((row) => row.Docentes_List))], state.filters.docente)}</select></label>` : "";
+  return `<section class="filters-panel"><h2>Filtros</h2><div class="filter-grid"><label>Materia<select id="filter-materia">${selectOptions(materialOptions, state.filters.materia)}</select></label><label>Laboratorio<select id="filter-laboratorio">${selectOptions(laboratoryOptions, state.filters.laboratorio)}</select></label><label>Carrera<select id="filter-carrera">${selectOptions(careerOptions, state.filters.carrera)}</select></label>${teacher}<div class="viz-control"><span>Visualización</span><div class="control-options"><label class="radio-option"><input type="radio" name="unit" value="percentage" ${state.isPercentage ? "checked" : ""}>Porcentaje (%)</label><label class="radio-option"><input type="radio" name="unit" value="absolute" ${!state.isPercentage ? "checked" : ""}>Cantidad absoluta / escala</label></div></div></div><button id="reset-filters" class="secondary">🔄 Borrar filtros</button></section>`;
 }
 
 function metricsMarkup(rows) {
@@ -334,7 +353,7 @@ function overviewMarkup(rows) {
     const display = value === null ? "Sin datos" : state.isPercentage ? `${Math.round(value / 5 * 100)}%` : value.toFixed(2);
     return `<article class="kpi-card"><div class="metric-label">${escapeHtml(prettify(column))}</div><div class="metric-value">${display}</div></article>`;
   }).join("");
-  return `<section class="section"><div class="section-heading"><h2>📈 Resultado general y comparativa</h2><p>Promedios de satisfacción total (escala 1 a 5).</p></div><div class="kpi-grid">${cards}</div><h3>🆚 Desglose global por carrera</h3><div class="chart-card"><div id="plot-global" class="plot"></div></div></section>`;
+  return `<section class="section"><div class="section-heading"><h2>📈 Resultado general y comparativa</h2><p>Promedios de satisfacción total (escala 1 a 5).</p></div><div class="result-columns"><div class="result-left"><div class="kpi-grid">${cards}</div></div><div class="result-right"><div class="chart-card"><div id="plot-global" class="plot"></div></div></div></div></section>`;
 }
 
 function questionMarkup() {
@@ -342,23 +361,23 @@ function questionMarkup() {
   return `<section class="section"><div class="section-heading"><h2>📝 Resultado detallado por pregunta</h2></div>${state.ratingColumns.map((column) => {
     const reference = SCALE_REFERENCES[column];
     const explanation = CAREER_EXPLANATIONS[column] || "Promedio de satisfacción desagregado por carrera.";
-    return `<article class="question"><h3>📌 ${escapeHtml(REVERSE_MAP[column] || column)}</h3><p class="pedagogic-note">💡 ${escapeHtml(explanation)}</p>${reference ? `<p class="scale-reference"><strong>Extremos:</strong> <span class="low">1</span>: ${escapeHtml(reference[0])} &nbsp;⟶&nbsp; <span class="high">5</span>: ${escapeHtml(reference[1])}</p>` : ""}<div class="two-charts"><div class="chart-card"><div id="plot-dist-${escapeHtml(column)}" class="plot"></div></div><div class="chart-card"><div id="plot-career-${escapeHtml(column)}" class="plot"></div></div></div></article>`;
+    return `<article class="question"><h3 style="font-size: 1.2rem; margin-bottom: 12px; font-weight: 700;">📌 ${escapeHtml(REVERSE_MAP[column] || column)}</h3><p style="margin: 0 0 10px; padding: 0; border: none; background: transparent; color: #667085; font-size: 0.9rem;">💡 ${escapeHtml(explanation)}</p>${reference ? `<p class="scale-reference"><strong>Extremos:</strong> <span class="low">1</span>: ${escapeHtml(reference[0])} &nbsp;⟶&nbsp; <span class="high">5</span>: ${escapeHtml(reference[1])}</p>` : ""}<div class="two-charts"><div class="chart-card"><div id="plot-dist-${escapeHtml(column)}" class="plot"></div></div><div class="chart-card"><div id="plot-career-${escapeHtml(column)}" class="plot"></div></div></div></article>`;
   }).join("")}</section>`;
 }
 
 function commentsMarkup(rows) {
   const cloudWords = cleanTextForCloud(rows.map((row) => row.Palabras_Clave).filter((value) => !isBlank(value)).join(" "));
   const displayColumns = state.textColumns.filter((column) => column !== "Palabras_Clave");
-  let cloud = cloudWords.length ? `<div class="word-cloud-card"><h3>Palabras clave globales</h3><p class="caption">Consigna: “Escribí tres palabras que describan tu experiencia en el laboratorio”.</p><canvas id="word-cloud" width="1200" height="400" aria-label="Nube de palabras clave"></canvas></div>` : "";
+  const cloud = cloudWords.length ? `<div class="word-cloud-card"><div class="word-cloud-heading"><div><h3>Palabras clave globales</h3><p class="caption">Consigna: "Escribí tres palabras que describan tu experiencia en el laboratorio".</p></div><label class="cloud-palette-control">Colores<select id="cloud-palette">${selectOptions(Object.keys(WORD_CLOUD_PALETTES), state.cloudPalette)}</select></label></div><canvas id="word-cloud" width="1200" height="400" aria-label="Nube de palabras clave"></canvas></div>` : "";
   if (!displayColumns.length) return `<section class="section"><div class="section-heading"><h2>☁️ Comentarios y opiniones</h2></div>${cloud}<div class="message info">No se detectaron columnas de comentarios en este archivo.</div></section>`;
-  const columnsStyle = `grid-template-columns: repeat(${displayColumns.length}, minmax(220px, 1fr));`;
+  const columnsStyle = `--comment-columns: ${displayColumns.length};`;
   const eligible = rows.filter((row) => displayColumns.some((column) => !isBlank(row[column]))).slice();
   if (state.commentSort === "Últimos") eligible.sort((a, b) => parseTimestamp(b.Timestamp) - parseTimestamp(a.Timestamp));
   else eligible.sort((a, b) => displayColumns.reduce((sum, column) => sum + asText(a[column]).length, 0) - displayColumns.reduce((sum, column) => sum + asText(b[column]).length, 0)).reverse();
   const visible = state.commentLimit === "Todos" ? eligible : eligible.slice(0, Number(state.commentLimit));
-  const header = displayColumns.map((column) => `<div>${escapeHtml(prettify(column))}</div>`).join("");
-  const commentRows = visible.map((row) => `<article class="comment-row"><div class="comment-meta">👤 <strong>${escapeHtml(row.Carrera)}</strong> <span> | ${escapeHtml(row.Laboratorio)}</span></div><div class="comment-content" style="${columnsStyle}">${displayColumns.map((column) => !isBlank(row[column]) && asText(row[column]).trim().length > 1 ? `<div>“${escapeHtml(asText(row[column]).trim())}”</div>` : `<div class="no-answer">[No responde.]</div>`).join("")}</div></article>`).join("");
-  return `<section class="section"><div class="section-heading"><h2>☁️ Comentarios y opiniones</h2></div>${cloud}<h3 style="margin-top:20px">Opiniones</h3><div class="comments-controls"><label>Ordenar por<select id="comment-sort">${selectOptions(["Últimos", "Longitud (Texto)"], state.commentSort)}</select></label><label>Mostrar<select id="comment-limit">${selectOptions(["10", "20", "Todos"], state.commentLimit)}</select></label></div>${visible.length ? `<div class="comments-card"><div class="comment-head" style="${columnsStyle}">${header}</div><div class="comment-scroll">${commentRows}</div></div>` : `<div class="message info">No hay comentarios disponibles.</div>`}</section>`;
+  const header = displayColumns.map((column) => `<div class="comment-question">${escapeHtml(prettify(column))}</div>`).join("");
+  const commentRows = visible.map((row) => `<article class="comment-row"><div class="comment-meta">👤 <strong>${escapeHtml(row.Carrera)}</strong> <span> | ${escapeHtml(row.Laboratorio)}</span></div><div class="comment-content" style="${columnsStyle}">${displayColumns.map((column) => !isBlank(row[column]) && asText(row[column]).trim().length > 1 ? `<div class="comment-answer" data-question="${escapeHtml(prettify(column))}">“${escapeHtml(asText(row[column]).trim())}”</div>` : `<div class="no-answer">[No responde.]</div>`).join("")}</div></article>`).join("");
+  return `<section class="section"><div class="section-heading"><h2>☁️ Comentarios y opiniones</h2></div>${cloud}<h3 style="margin-top:20px">Opiniones</h3><div class="comments-controls"><label>Ordenar por<select id="comment-sort">${selectOptions(["Últimos", "Longitud (Texto)"], state.commentSort)}</select></label><label>Mostrar<select id="comment-limit">${selectOptions(["10", "20", "Todos"], state.commentLimit)}</select></label></div>${visible.length ? `<p class="comment-scroll-note"><em>(Desplácese verticalmente por la tabla para recorrer los comentarios)</em></p><div class="comments-card"><div class="comment-head" style="${columnsStyle}">${header}</div><div class="comment-scroll">${commentRows}</div></div>` : `<div class="message info">No hay comentarios disponibles.</div>`}</section>`;
 }
 
 function dataMarkup(rows) {
@@ -367,13 +386,21 @@ function dataMarkup(rows) {
   return `<section class="section"><details class="data-card"><summary>📂 Ver base de datos (filtros actuales)</summary><div class="table-scroll"><table><thead><tr>${headers}</tr></thead><tbody>${body}</tbody></table></div></details></section>`;
 }
 
+function footerMarkup() {
+  return `<div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); text-align: center; color: var(--muted); font-size: 0.86rem;"><p>Desarrollado por: <strong>J. I. Peralta</strong> & <strong>🤖 LLMs</strong> | Última edición: 13/08/2026</p><p><a href="mailto:jperalta@untref.edu.ar" style="color: var(--muted); text-decoration: none;">📧 jperalta@untref.edu.ar</a> · <a href="https://www.linkedin.com/in/juaniperalta/" style="color: var(--muted); text-decoration: none;" target="_blank" rel="noreferrer">🔗 LinkedIn</a></p></div>`;
+}
+
 function dashboardMarkup() {
   const rows = filteredData();
-  return `${filterMarkup()}${metricsMarkup(rows)}${overviewMarkup(rows)}${questionMarkup()}${commentsMarkup(rows)}${dataMarkup(rows)}`;
+  const collapsed = state.sidebarOpen ? "" : " sidebar-collapsed";
+  const sidebarLabel = state.sidebarOpen ? "Ocultar filtros" : "Mostrar filtros";
+  const sidebarIcon = state.sidebarOpen ? "◀" : "▶";
+  return `<div class="dashboard-layout${collapsed}"><aside class="sidebar"><button id="toggle-sidebar" class="sidebar-toggle" type="button" aria-expanded="${state.sidebarOpen}" aria-label="${sidebarLabel}" title="${sidebarLabel}"><span aria-hidden="true">${sidebarIcon}</span><span class="sidebar-toggle-label">${state.sidebarOpen ? "Ocultar" : "Filtros"}</span></button>${state.sidebarOpen ? filterMarkup() : ""}</aside><div class="dashboard-content">${metricsMarkup(rows)}${overviewMarkup(rows)}${questionMarkup()}${commentsMarkup(rows)}${dataMarkup(rows)}${footerMarkup()}</div></div>`;
 }
 
 function render() {
-  let content = `<h1>📊 Resultados de la Encuesta del Laboratorio de Física</h1>${sourceMarkup()}`;
+  applyTheme();
+  let content = `<div class="title-row"><h1>📊 Resultados de la Encuesta del Laboratorio de Física</h1><label class="theme-control">Apariencia<select id="theme-mode" aria-label="Apariencia del tablero">${selectOptions(["system", "light", "dark"], state.themeMode).replace(">system<", ">Sistema<").replace(">light<", ">Claro<").replace(">dark<", ">Oscuro<")}</select></label></div>${sourceMarkup()}`;
   if (state.error) content += `<div class="message error">${escapeHtml(state.error)}</div>`;
   if (state.loading) content += `<div class="loading-card">Cargando y procesando datos…</div>`;
   else if (state.data) content += dashboardMarkup();
@@ -397,14 +424,21 @@ function bindEvents() {
   document.querySelector("#reset-filters")?.addEventListener("click", () => { state.filters = { materia: "Todas", laboratorio: "Todos", carrera: "Todas", docente: "Todos" }; render(); });
   document.querySelector("#comment-sort")?.addEventListener("change", (event) => { state.commentSort = event.target.value; render(); });
   document.querySelector("#comment-limit")?.addEventListener("change", (event) => { state.commentLimit = event.target.value; render(); });
+  document.querySelector("#cloud-palette")?.addEventListener("change", (event) => { state.cloudPalette = event.target.value; savePreference("untref-cloud-palette", state.cloudPalette); drawWordCloud(filteredData()); });
+  document.querySelector("#theme-mode")?.addEventListener("change", (event) => { state.themeMode = event.target.value; savePreference("untref-theme-mode", state.themeMode); render(); });
+  document.querySelector("#toggle-sidebar")?.addEventListener("click", () => { state.sidebarOpen = !state.sidebarOpen; savePreference("untref-sidebar-open", String(state.sidebarOpen)); render(); });
 }
 
 function plotBar(id, { x, y, text, orientation = "h", title, xTitle, xRange, valueColors }) {
   const element = document.querySelector(`#${CSS.escape(id)}`);
   if (!element || !window.Plotly) return;
+  const dark = isDarkTheme();
+  const background = dark ? "#17212b" : "#ffffff";
+  const ink = dark ? "#e6edf3" : "#1f2933";
+  const grid = dark ? "#334657" : "#e6edf2";
   Plotly.newPlot(element, [{ type: "bar", orientation, x, y, text, texttemplate: "%{text}", textposition: "outside", cliponaxis: false, marker: { color: valueColors, colorscale: [[0, "#bce8e5"], [1, "#006d77"]], showscale: false }, hovertemplate: "%{y}<br><b>%{x}</b><extra></extra>" }], {
     title: { text: title, font: { size: 15 } }, margin: { t: 48, r: 65, b: 55, l: orientation === "h" ? 185 : 55 }, height: 350,
-    paper_bgcolor: "#fff", plot_bgcolor: "#fff", xaxis: { title: xTitle, range: xRange, fixedrange: false, gridcolor: "#e6edf2" }, yaxis: { title: orientation === "v" ? xTitle : "", fixedrange: false, gridcolor: "#e6edf2" }, showlegend: false
+    paper_bgcolor: background, plot_bgcolor: background, font: { color: ink }, xaxis: { title: xTitle, range: xRange, fixedrange: false, gridcolor: grid, zerolinecolor: grid }, yaxis: { title: orientation === "v" ? xTitle : "", fixedrange: false, gridcolor: grid, zerolinecolor: grid }, showlegend: false
   }, { responsive: true, displaylogo: false });
 }
 
@@ -429,35 +463,34 @@ function drawVisualizations() {
 
 function drawWordCloud(rows) {
   const canvas = document.querySelector("#word-cloud");
-  if (!canvas) return;
+  if (!canvas || !window.WordCloud) return;
+  const containerWidth = canvas.parentElement?.clientWidth || 1200;
+  const width = Math.max(320, Math.min(1200, Math.floor(containerWidth - 32)));
+  canvas.width = width;
+  canvas.height = Math.round(width / 3);
   const counts = new Map();
   cleanTextForCloud(rows.map((row) => row.Palabras_Clave).filter((value) => !isBlank(value)).join(" ")).forEach((word) => counts.set(word, (counts.get(word) || 0) + 1));
-  const words = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 80);
-  const context = canvas.getContext("2d");
-  context.clearRect(0, 0, canvas.width, canvas.height);
+  const words = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 300);
   if (!words.length) return;
-  const max = words[0][1]; const min = words[words.length - 1][1]; const placed = [];
-  words.forEach(([word, count], index) => {
-    const size = 17 + ((count - min) / Math.max(1, max - min)) * 52;
-    context.font = `600 ${size}px Inter, Arial, sans-serif`;
-    const width = context.measureText(word).width; const height = size * .88;
-    let position = null;
-    for (let step = 0; step < 1100; step += 1) {
-      const angle = step * .45 + index * .7; const radius = 3 + step * .32;
-      const x = canvas.width / 2 + Math.cos(angle) * radius - width / 2;
-      const y = canvas.height / 2 + Math.sin(angle) * radius + height / 2;
-      const box = { x: x - 4, y: y - height - 4, width: width + 8, height: height + 8 };
-      const inside = box.x >= 0 && box.y >= 0 && box.x + box.width <= canvas.width && box.y + box.height <= canvas.height;
-      const overlaps = placed.some((other) => box.x < other.x + other.width && box.x + box.width > other.x && box.y < other.y + other.height && box.y + box.height > other.y);
-      if (inside && !overlaps) { position = { x, y, box }; break; }
-    }
-    if (position) {
-      placed.push(position.box);
-      context.fillStyle = ["#007c83", "#2a9d8f", "#457b9d", "#6a994e", "#4361ee"][index % 5];
-      context.fillText(word, position.x, position.y);
-    }
+  const palette = WORD_CLOUD_PALETTES[state.cloudPalette] || WORD_CLOUD_PALETTES.Viridis;
+  const max = words[0][1];
+  const min = words[words.length - 1][1];
+  WordCloud(canvas, {
+    list: words,
+    gridSize: Math.max(4, Math.round(canvas.width / 180)),
+    weightFactor: (count) => 20 + ((count - min) / Math.max(1, max - min)) * 76,
+    fontFamily: "Inter, Arial, sans-serif",
+    fontWeight: 600,
+    color: (_word, _weight, fontSize) => palette[Math.min(palette.length - 1, Math.max(0, Math.round((fontSize - 20) / 76 * (palette.length - 1))))],
+    backgroundColor: "transparent",
+    rotateRatio: 0,
+    shuffle: true,
+    shape: "square",
+    drawOutOfBound: false
   });
 }
 
 render();
 loadFromUrl(OFFICIAL_SHEET_URL);
+window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.themeMode === "system") render(); });
+window.addEventListener("resize", () => { if (state.data) drawWordCloud(filteredData()); });
