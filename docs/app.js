@@ -343,7 +343,7 @@ function metricsMarkup(rows) {
   const total = state.data.length;
   const percentage = total ? (rows.length / total) * 100 : 0;
   const sentiment = calculateSentiment(rows);
-  return `<div class="metrics-row"><article class="metric"><div class="metric-label">Encuestas</div><div class="metric-value">${rows.length} de ${total}</div><div class="metric-delta">${percentage.toFixed(1)}% de la muestra</div></article><article class="metric sentiment" style="background:${sentiment.color}">${sentiment.label}</article><article class="metric sentiment-note"><span><strong>Fuentes del análisis</strong><br>Preguntas: Mejoras + Palabras Clave.</span></article></div>`;
+  return `<div class="metrics-row"><article class="metric"><div class="metric-label">Encuestas</div><div class="metric-value">${rows.length} de ${total}</div><div class="metric-delta">${percentage.toFixed(1)}% de la muestra</div></article><article class="metric"><div class="sentiment-badge" style="background:${sentiment.color}">${sentiment.label}</div><p class="sentiment-caption">Fuentes del análisis: Preguntas Mejoras + Palabras Clave.</p></article></div>`;
 }
 
 function overviewMarkup(rows) {

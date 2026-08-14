@@ -15,6 +15,7 @@ from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import numpy as np
 import unicodedata
+import re
 
 # --- CONFIGURACIÓN DE DATOS POR DEFECTO ---
 # LINK_OFICIAL_ENCUESTA = "https://docs.google.com/spreadsheets/d/1xiz_2A3bWK5vAd6MkCIC0dIXfiMcYqs3UpCQvRtZ1Mg/edit?usp=sharing" # JIP: 2025B
@@ -500,30 +501,28 @@ if df is not None:
 
     # --- APLICAR FILTROS ---
     df_f = df.copy()
-    filter_conditions = [
-        (sel_mat != 'Todas', df_f['Materia'] == sel_mat),
-        (sel_lab != 'Todos', df_f['Laboratorio'] == sel_lab),
-        (sel_car != 'Todas', df_f['Carrera'] == sel_car),
-        (sel_doc != 'Todos', df_f['Docentes_List'].apply(lambda x: sel_doc in x))
-    ]
-    for condition, mask in filter_conditions:
-        if condition:
-            df_f = df_f[mask]
+    if sel_mat != 'Todas':
+        df_f = df_f[df_f['Materia'] == sel_mat]
+    if sel_lab != 'Todos':
+        df_f = df_f[df_f['Laboratorio'] == sel_lab]
+    if sel_car != 'Todas':
+        df_f = df_f[df_f['Carrera'] == sel_car]
+    if sel_doc != 'Todos' and 'Docentes_List' in df_f.columns:
+        df_f = df_f[df_f['Docentes_List'].apply(lambda x: sel_doc in x)]
 
     # --- KPI & SENTIMIENTO ---
     tot, filt = len(df), len(df_f)
     pct = (filt/tot*100) if tot>0 else 0
-    c1, c2, c3 = st.columns(3)
+    c1, c2 = st.columns(2)
     c1.metric("Encuestas", f"{filt} de {tot}", f"{pct:.1f}% muestra")
 
     text_cols_manual = ['Opinion_Mejoras', 'Palabras_Clave']
     sent_txt, sent_col = calcular_sentimiento(df_f, text_cols_manual)
+    fuentes_sentimiento = [c.replace('Opinion_', '').replace('_', ' ') for c in text_cols_manual]
 
     with c2:
         st.markdown(f"<div style='background:{sent_col};color:white;padding:10px;border-radius:5px;text-align:center'><b>{sent_txt}</b></div>", unsafe_allow_html=True)
-    with c3:
-        fuentes_sentimiento = [c.replace('Opinion_', '').replace('_', ' ') for c in text_cols_manual]
-        st.caption(f"**Fuentes del análisis:** Preg. {' + '.join(fuentes_sentimiento)}.")
+        st.caption(f"Fuentes del análisis: Preg. {' + '.join(fuentes_sentimiento)}.")
     
     st.divider()
 
@@ -532,53 +531,53 @@ if df is not None:
     st.markdown("Promedios de satisfacción total (escala 1 a 5).")
     if rating_cols:
         avgs = df_f[rating_cols].mean()
-        for i in range(0, len(rating_cols), 2):
-            cols_kpi = st.columns(2)
-            for j, col in enumerate(rating_cols[i:i+2]):
-                with cols_kpi[j]:
-                    val = avgs[col]
 
-                    nombres_kpi = {
-                        'Calif_Guias': 'Claridad de las Guías',
-                        'Calif_Videos': 'Utilidad de los Videos',
-                        'Calif_Coord_Teoria': 'Coordinación con la Teoría',
-                        'Calif_Docentes_Expl': 'Explicación de los Docentes',
-                        'Calif_Correcciones': 'Valor de las Correcciones',
-                        'Calif_Impacto_Aprendizaje': 'Impacto en el Aprendizaje'
-                    }
-                    # Usa el nombre bonito si existe, sino usa el original limpio.
-                    # Se fuerza a str para evitar errores de tipado y de None en ejecución.
-                    lbl = nombres_kpi.get(col)
-                    if lbl is None:
-                        lbl = col.replace('Calif_', '').replace('_', ' ')
-                    lbl = str(lbl)
-                    
-                    d_val = f"{(val/5)*100:.0f}%" if is_pct else f"{val:.2f}"
-                    st.metric(lbl, d_val)
-        
-        st.write("") 
-        
-        # Comparativa Global por Carrera
-        st.markdown("#### 🆚 Desglose Global por Carrera")
-        df_f['Score_Global'] = df_f[rating_cols].mean(axis=1)
-        career_global = df_f.groupby('Carrera')['Score_Global'].agg(['mean', 'count']).reset_index().sort_values('mean', ascending=True)
-        
-        if is_pct:
-            career_global['Display'] = (career_global['mean'] / 5) * 100
-            x_ax = 'Display'; x_title = "% Satisfacción Global"; txt_fmt = '.1f'; txt_suf = '%'
-            range_x = [0, 110]
-        else:
-            career_global['Display'] = career_global['mean']
-            x_ax = 'Display'; x_title = "Promedio General (1-5)"; txt_fmt = '.2f'; txt_suf = ''
-            range_x = [1, 5.8] 
+        col_izq, col_der = st.columns([3, 7])  # ≈ misma proporción 30/70 que .result-columns en la web
+
+        with col_izq:
+            for i in range(0, len(rating_cols), 2):
+                cols_kpi = st.columns(2)
+                for j, col in enumerate(rating_cols[i:i+2]):
+                    with cols_kpi[j]:
+                        val = avgs[col]
+
+                        nombres_kpi = {
+                            'Calif_Guias': 'Claridad de las Guías',
+                            'Calif_Videos': 'Utilidad de los Videos',
+                            'Calif_Coord_Teoria': 'Coordinación con la Teoría',
+                            'Calif_Docentes_Expl': 'Explicación de los Docentes',
+                            'Calif_Correcciones': 'Valor de las Correcciones',
+                            'Calif_Impacto_Aprendizaje': 'Impacto en el Aprendizaje'
+                        }
+                        lbl = nombres_kpi.get(col)
+                        if lbl is None:
+                            lbl = col.replace('Calif_', '').replace('_', ' ')
+                        lbl = str(lbl)
+                        
+                        d_val = f"{(val/5)*100:.0f}%" if is_pct else f"{val:.2f}"
+                        st.metric(lbl, d_val)
+
+        with col_der:
+            df_f['Score_Global'] = df_f[rating_cols].mean(axis=1)
+            career_global = df_f.groupby('Carrera')['Score_Global'].agg(['mean', 'count']).reset_index().sort_values('mean', ascending=True)
             
-        career_global['Label'] = career_global.apply(lambda x: f"{x['Carrera']} (N={int(x['count'])})", axis=1)
-        
-        fig_global = px.bar(career_global, y='Label', x=x_ax, text=x_ax, orientation='h', 
-                            color=x_ax, color_continuous_scale='Teal')
-        fig_global.update_traces(texttemplate='%{text:' + txt_fmt + '}' + txt_suf, textposition='outside', hoverinfo='skip', hovertemplate=None)
-        fig_global.update_layout(xaxis=dict(range=range_x, title=x_title), yaxis_title=None, height=400)
-        st.plotly_chart(fig_global, use_container_width=True, key="global_chart")
+            if is_pct:
+                career_global['Display'] = (career_global['mean'] / 5) * 100
+                x_ax = 'Display'; x_title = "% Satisfacción Global"; txt_fmt = '.1f'; txt_suf = '%'
+                range_x = [0, 110]
+            else:
+                career_global['Display'] = career_global['mean']
+                x_ax = 'Display'; x_title = "Promedio General (1-5)"; txt_fmt = '.2f'; txt_suf = ''
+                range_x = [1, 5.8] 
+                
+            career_global['Label'] = career_global.apply(lambda x: f"{x['Carrera']} (N={int(x['count'])})", axis=1)
+            
+            fig_global = px.bar(career_global, y='Label', x=x_ax, text=x_ax, orientation='h', 
+                                color=x_ax, color_continuous_scale='Teal',
+                                title="Satisfacción global por carrera")
+            fig_global.update_traces(texttemplate='%{text:' + txt_fmt + '}' + txt_suf, textposition='outside', hoverinfo='skip', hovertemplate=None)
+            fig_global.update_layout(xaxis=dict(range=range_x, title=x_title), yaxis_title=None, height=400)
+            st.plotly_chart(fig_global, use_container_width=True, key="global_chart")
 
     st.divider()
 
