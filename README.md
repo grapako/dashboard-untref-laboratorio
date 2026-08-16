@@ -19,34 +19,39 @@ La herramienta permite al equipo docente y directivo visualizar métricas clave,
 
 ## 🚀 Acceso a la Aplicación
 
-Puedes acceder al dashboard funcionando aquí:
-👉 **[Abrir Dashboard en Streamlit](https://encuestas-laboratorio-untref.streamlit.app/)**
+El dashboard está disponible en dos versiones equivalentes, con el mismo diseño y funcionalidades:
+
+- **App Streamlit (Python):** 👉 **[Abrir en Streamlit](https://encuestas-laboratorio-untref.streamlit.app/)**
+- **Versión web estática (HTML/JS):** 👉 **[Abrir versión web](https://grapako.github.io/dashboard-untref-laboratorio/)** — corre 100% en el navegador, sin backend.
 
 ## ✨ Funcionalidades Principales
 
 - **Carga de Datos:** Conexión directa con Google Sheets o carga de archivos CSV/Excel.
-- **Filtros Dinámicos:** Segmentación por Laboratorio, Carrera y Docente presente.
-- **Indicadores (KPIs):** Promedios de satisfacción general y comparativas.
+- **Filtros Dinámicos:** Segmentación por Materia, Laboratorio y Carrera.
+- **Indicadores (KPIs):** Promedios de satisfacción general y comparativas, en porcentaje o escala 1-5.
 - **Visualización:**
-  - Distribuciones de respuestas (Escala 1-5).
-  - Comparativa de satisfacción por Carrera.
+  - Distribuciones de respuestas por pregunta (Escala 1-5).
+  - Comparativa de satisfacción global y por pregunta, desagregada por Carrera.
 - **Análisis de Texto:**
-  - Nube de palabras clave.
-  - Clasificación automática de sentimiento (Positivo/Neutro/Negativo).
-  - Explorador de opiniones categorizado.
+  - Nube de palabras clave, con selector de paleta de color.
+  - Clasificación automática de sentimiento (Positivo/Neutro/Negativo) a partir de las respuestas abiertas.
+  - Explorador de opiniones por pregunta, con orden y límite configurables.
+- **Modo claro / oscuro**, con soporte para seguir la preferencia del sistema operativo.
 
 ## 🛠️ Tecnologías Utilizadas
 
-- **Python** (Lenguaje principal)
-- **Streamlit** (Framework de interfaz web)
-- **Pandas** (Procesamiento de datos)
-- **Plotly** (Gráficos interactivos)
+**App Streamlit:**
+- **Python**, **Streamlit**, **Pandas**, **Plotly**, **WordCloud**, **Matplotlib**
+
+**Versión web estática** (`docs/`):
+- **HTML / CSS / JavaScript** puro (sin frameworks ni build step)
+- **Plotly.js**, **PapaParse** (CSV), **SheetJS** (Excel), **wordcloud2.js**, todo vía CDN
 
 ## 👥 Créditos
 
 **Desarrollado por:**
 - **Juan Ignacio Peralta** (Departamento de Ciencia y Tecnología - UNTREF)
-- Asistencia técnica de IA (Gemini Pro 3.0)
+- Asistencia técnica de IA (Claude Sonnet 5, Anthropic)
 
 ---
 *Universidad Nacional de Tres de Febrero (UNTREF)*
