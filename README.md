@@ -21,8 +21,8 @@ La herramienta permite al equipo docente y directivo visualizar métricas clave,
 
 El dashboard está disponible en dos versiones equivalentes, con el mismo diseño y funcionalidades:
 
-- **App Streamlit (Python):** 👉 **[Abrir en Streamlit](https://encuestas-laboratorio-untref.streamlit.app/)**
-- **Versión web estática (HTML/JS):** 👉 **[Abrir versión web](https://grapako.github.io/dashboard-untref-laboratorio/)** — corre 100% en el navegador, sin backend.
+- **Versión web estática (HTML/JS):** 👉 **[Abrir versión web](https://snapt.io/encuestalabofisicaweb)** — corre 100% en el navegador, sin backend.
+- **App Streamlit (Python):** 👉 **[Abrir en Hugging Face Spaces](https://snapt.io/encuestaslabofisica)**
 
 ## ✨ Funcionalidades Principales
 
