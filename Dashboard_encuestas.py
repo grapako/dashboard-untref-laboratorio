@@ -16,6 +16,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import unicodedata
 import re
+from collections import Counter
+import html
 
 # --- CONFIGURACIÓN DE DATOS POR DEFECTO ---
 # LINK_OFICIAL_ENCUESTA = "https://docs.google.com/spreadsheets/d/1xiz_2A3bWK5vAd6MkCIC0dIXfiMcYqs3UpCQvRtZ1Mg/edit?usp=sharing" # JIP: 2025B
@@ -554,7 +556,10 @@ if df is not None:
                             lbl = col.replace('Calif_', '').replace('_', ' ')
                         lbl = str(lbl)
                         
-                        d_val = f"{(val/5)*100:.0f}%" if is_pct else f"{val:.2f}"
+                        if pd.isna(val):
+                            d_val = "Sin datos"
+                        else:
+                            d_val = f"{(val/5)*100:.0f}%" if is_pct else f"{val:.2f}"
                         st.metric(lbl, d_val)
 
         with col_der:
@@ -573,10 +578,17 @@ if df is not None:
             career_global['Label'] = career_global.apply(lambda x: f"{x['Carrera']} (N={int(x['count'])})", axis=1)
             
             fig_global = px.bar(career_global, y='Label', x=x_ax, text=x_ax, orientation='h', 
-                                color=x_ax, color_continuous_scale='Teal',
-                                title="Satisfacción global por carrera")
+                        color=x_ax, color_continuous_scale='Teal',
+                        title="Satisfacción global por carrera")
             fig_global.update_traces(texttemplate='%{text:' + txt_fmt + '}' + txt_suf, textposition='outside', hoverinfo='skip', hovertemplate=None)
-            fig_global.update_layout(xaxis=dict(range=range_x, title=x_title), yaxis_title=None, height=400)
+            fig_global.update_layout(
+                xaxis=dict(range=range_x, title=x_title),
+                yaxis_title=None,
+                height=400,
+                margin=dict(l=185, r=65, t=48, b=55),
+                title_font_size=15,
+                coloraxis_showscale=False
+            )
             st.plotly_chart(fig_global, use_container_width=True, key="global_chart")
 
     st.divider()
@@ -590,7 +602,7 @@ if df is not None:
         
         # --- A. Contexto Pedagógico (Movido al inicio) ---
         exp = EXPLICACIONES_CARRERA.get(col, EXPLICACION_DEFAULT)
-        st.info(f"💡 {exp}")
+        st.markdown(f"<p style='margin:0 0 10px; padding:0; color:#667085; font-size:0.9rem;'>💡 {exp}</p>", unsafe_allow_html=True)
 
         # --- B. Referencias de Escala (Debajo de la explicación) ---
         if col in REFERENCIAS_ESCALA:
@@ -661,15 +673,45 @@ if df is not None:
     
     # Nube (Exclusiva de Palabras Clave)
     cloud_col = 'Palabras_Clave'
-    COLORMAPS = {'Pastel': 'Pastel1', 'Viridis': 'viridis', 'Tropical': 'twilight'}
+    WORD_CLOUD_PALETTES = {
+        'Pastel': ['#7c3aed', '#a21caf', '#be185d', '#c2410c', '#a16207', '#4d7c0f', '#15803d', '#0f766e', '#0369a1', '#4338ca'],
+        'Viridis': ['#440154', '#482878', '#3e4989', '#31688e', '#26828e', '#1f9e89', '#35b779', '#6ece58', '#b5de2b', '#d4e21a'],
+        'Tropical': ['#e63946', '#f77f00', '#fcbf49', '#06a77d', '#118ab2', '#073b4c', '#d62828', '#f77f00', '#fcbf49', '#06a77d']
+    }
     if cloud_col in df_f.columns:
         raw_txt = " ".join(df_f[cloud_col].dropna().astype(str))
-        txt_cloud = clean_text_for_wordcloud(raw_txt) 
+        txt_cloud = clean_text_for_wordcloud(raw_txt)
         if len(txt_cloud) > 10:
-            st.markdown("#### Palabras Clave Globales")
-            st.caption("Consigna: 'Escribí tres palabras que describan tu experiencia en el laboratorio'")
-            palette_choice = st.selectbox("Colores", list(COLORMAPS.keys()), index=0)
-            wc = WordCloud(width=1200, height=400, background_color='white', colormap=COLORMAPS[palette_choice], regexp=r"\w+", random_state=42).generate(txt_cloud)
+            c_tit, c_pal = st.columns([4, 1])
+            with c_tit:
+                st.markdown("#### Palabras Clave Globales")
+                st.caption("Consigna: 'Escribí tres palabras que describan tu experiencia en el laboratorio'")
+            with c_pal:
+                palette_choice = st.selectbox("Colores", list(WORD_CLOUD_PALETTES.keys()), index=0)
+
+            # Mismo criterio que drawWordCloud() en app.js: contamos nosotros las
+            # palabras (sin bigramas), tomamos las 300 más frecuentes, y coloreamos
+            # por frecuencia relativa de CADA palabra, no por el font_size interno de wordcloud.
+            counts = Counter(txt_cloud.split())
+            top_words = counts.most_common(300)
+            colors = WORD_CLOUD_PALETTES[palette_choice]
+            max_count = top_words[0][1]
+            min_count = top_words[-1][1]
+
+            word_color = {}
+            for word, count in top_words:
+                idx = round((count - min_count) / max(1, max_count - min_count) * (len(colors) - 1))
+                word_color[word] = colors[max(0, min(len(colors) - 1, idx))]
+
+            def cloud_color_func(word=None, font_size=None, position=None, orientation=None, random_state=None, **kwargs):
+                return word_color.get(word, colors[0])
+
+            wc = WordCloud(
+                width=1200, height=400, background_color='white',
+                max_words=300, collocations=False, stopwords=set(),
+                color_func=cloud_color_func, random_state=42
+            ).generate_from_frequencies(dict(top_words))
+
             fig, ax = plt.subplots(figsize=(12, 4))
             ax.imshow(wc); ax.axis("off")
             plt.close(fig)
@@ -712,8 +754,10 @@ if df is not None:
             cols_header = st.columns(len(display_text_cols))
             
             for i, col_name in enumerate(display_text_cols):
-                raw_header = REVERSE_MAP.get(col_name) or col_name
-                header = str(raw_header).replace('Opinion_', '').replace('_', ' ').title()
+                if col_name in REVERSE_MAP:
+                    header = REVERSE_MAP[col_name]  # pregunta completa, sin tocar mayúsculas (igual que prettify() en app.js)
+                else:
+                    header = col_name.replace('Opinion_', '').replace('_', ' ').title()
                 # Encabezado en negrita y color primario para destacar
                 cols_header[i].markdown(f"**:blue[{header}]**")
             
@@ -736,8 +780,8 @@ if df is not None:
                         val = row.get(col_name)
                         with cols_row[i]:
                             if pd.notna(val) and len(str(val)) > 1:
-                                texto_limpio = str(val).strip()
-                                st.markdown(f"“{texto_limpio}”")
+                                texto_limpio = html.escape(str(val).strip())
+                                st.markdown(f'<div>“{texto_limpio}”</div>', unsafe_allow_html=True)
                             else:
                                 st.caption("[No responde.]")
 
@@ -752,7 +796,7 @@ if df is not None:
     with st.expander("📂 Ver Base de Datos (Filtros actuales)"):
         st.dataframe(df_f)
 
-elif src == "📂 Subir Archivo (.xlsx / .csv)" and not st.session_state.get('uploaded_file'):
+elif src == "📂 Subir Archivo (.xlsx / .csv)":
     st.info("Sube un archivo del formulario para comenzar.")
 elif src == "🔗 Pegar Link de Google Sheet":
     st.info("Pega el link arriba.")
